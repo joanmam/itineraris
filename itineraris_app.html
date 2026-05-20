@@ -1,0 +1,797 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Les meves rutes</title>
+
+<!-- PWA / iOS standalone -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Rutes">
+<meta name="theme-color" content="#2563eb">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="application-name" content="Rutes">
+
+<!-- Icona iOS (SVG inline com a data URI) -->
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'%3E%3Crect width='180' height='180' rx='40' fill='%232563eb'/%3E%3Ctext x='90' y='125' text-anchor='middle' font-size='100'%3E🗺️%3C/text%3E%3C/svg%3E">
+
+<style>
+:root {
+  color-scheme: light;
+  --primary: #2563eb;
+  --primary-dark: #1d4ed8;
+  --primary-light: #eff6ff;
+  --success: #16a34a;
+  --success-light: #f0fdf4;
+  --danger: #dc2626;
+  --warn-bg: #fffbeb;
+  --warn: #d97706;
+  --gray-50: #f9fafb;
+  --gray-100: #f3f4f6;
+  --gray-200: #e5e7eb;
+  --gray-300: #d1d5db;
+  --gray-500: #6b7280;
+  --gray-700: #374151;
+  --gray-900: #111827;
+  --radius: 14px;
+  --shadow: 0 1px 3px rgba(0,0,0,.1), 0 1px 2px rgba(0,0,0,.06);
+  --shadow-md: 0 4px 6px rgba(0,0,0,.07);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+html, body { height: 100%; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--gray-50);
+  color: var(--gray-900);
+  max-width: 480px;
+  margin: 0 auto;
+  min-height: 100%;
+}
+
+/* ── HEADER ── */
+.header {
+  background: white;
+  border-bottom: 1px solid var(--gray-200);
+  padding: env(safe-area-inset-top, 0) 0 0;
+}
+.header-inner {
+  display: flex; align-items: center; gap: 10px;
+  padding: 14px 16px;
+}
+.header-back {
+  width: 36px; height: 36px; border: none;
+  background: var(--gray-100); border-radius: 50%;
+  cursor: pointer; font-size: 18px; color: var(--gray-700);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.header-title { font-size: 17px; font-weight: 700; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.header-btn {
+  border: none; border-radius: 9px; padding: 8px 13px;
+  font-size: 13px; font-weight: 700; cursor: pointer; white-space: nowrap;
+  font-family: inherit;
+}
+.header-btn.primary { background: var(--primary); color: white; }
+.header-btn.ghost { background: var(--gray-100); color: var(--gray-700); }
+
+/* ── VIEW ── */
+.view { display: none; padding-bottom: calc(90px + env(safe-area-inset-bottom, 0)); }
+.view.active { display: block; }
+.view-body { padding: 14px; }
+
+/* ── ROUTE LIST ── */
+.empty-state { text-align: center; padding: 64px 20px; color: var(--gray-500); }
+.empty-state .icon { font-size: 60px; margin-bottom: 14px; }
+.empty-state h3 { font-size: 18px; color: var(--gray-700); margin-bottom: 6px; }
+.empty-state p { font-size: 14px; line-height: 1.6; }
+
+.route-card {
+  background: white; border-radius: var(--radius);
+  padding: 14px; margin-bottom: 10px; box-shadow: var(--shadow);
+  cursor: pointer; display: flex; align-items: center; gap: 12px;
+  border: 2px solid transparent; transition: border-color .15s, box-shadow .15s;
+  text-decoration: none; color: inherit;
+}
+.route-card:active { border-color: var(--primary); box-shadow: var(--shadow-md); }
+.route-icon { width: 48px; height: 48px; background: var(--primary-light); border-radius: 11px; display: flex; align-items: center; justify-content: center; font-size: 24px; flex-shrink: 0; }
+.route-info { flex: 1; min-width: 0; }
+.route-name { font-size: 15px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.route-meta { font-size: 12px; color: var(--gray-500); margin-top: 2px; }
+.route-badge { background: var(--primary-light); color: var(--primary); font-size: 11px; font-weight: 700; border-radius: 20px; padding: 4px 10px; white-space: nowrap; }
+
+/* ── MODAL ── */
+.modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 200; align-items: flex-end; justify-content: center; }
+.modal-overlay.open { display: flex; }
+.modal {
+  background: white; border-radius: 22px 22px 0 0;
+  padding: 20px 18px calc(28px + env(safe-area-inset-bottom, 0));
+  width: 100%; max-width: 480px; max-height: 94vh; overflow-y: auto;
+  animation: slideUp .22s ease;
+}
+@keyframes slideUp { from { transform: translateY(40px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+.modal-handle { width: 38px; height: 4px; background: var(--gray-300); border-radius: 2px; margin: 0 auto 18px; }
+.modal-title { font-size: 20px; font-weight: 800; margin-bottom: 18px; }
+
+/* ── FORM ── */
+.form-group { margin-bottom: 14px; }
+.form-label { display: block; font-size: 11px; font-weight: 700; color: var(--gray-500); margin-bottom: 5px; text-transform: uppercase; letter-spacing: .06em; }
+.form-input, .form-textarea {
+  width: 100%; border: 1.5px solid var(--gray-200); border-radius: 11px;
+  padding: 12px 14px; font-size: 16px; color: var(--gray-900);
+  background: white; outline: none; transition: border-color .15s; font-family: inherit;
+}
+.form-input:focus, .form-textarea:focus { border-color: var(--primary); }
+.form-textarea { resize: none; min-height: 85px; }
+
+/* ── GPS ── */
+.gps-row { display: flex; gap: 8px; align-items: stretch; }
+.gps-capture-btn {
+  flex-shrink: 0; padding: 10px 13px;
+  background: var(--primary-light); color: var(--primary);
+  border: 1.5px solid #bfdbfe; border-radius: 11px;
+  font-size: 13px; font-weight: 700; cursor: pointer; white-space: nowrap;
+  font-family: inherit; transition: background .15s;
+}
+.gps-capture-btn:active { background: #dbeafe; }
+.gps-capture-btn.captured { background: var(--success-light); color: var(--success); border-color: #bbf7d0; }
+.gps-display {
+  flex: 1; font-size: 12px; color: var(--gray-500);
+  padding: 9px 11px; background: var(--gray-50);
+  border-radius: 11px; border: 1px solid var(--gray-200);
+  word-break: break-all; display: flex; align-items: center;
+}
+
+/* ── PHOTO ── */
+.photo-area { width: 100%; border: 2px dashed var(--gray-300); border-radius: 11px; padding: 20px; background: var(--gray-50); cursor: pointer; text-align: center; color: var(--gray-500); font-size: 13px; transition: all .15s; }
+.photo-area:active { border-color: var(--primary); background: var(--primary-light); }
+.photo-area .icon { font-size: 30px; margin-bottom: 6px; }
+.photo-preview { width: 100%; max-height: 190px; object-fit: cover; border-radius: 11px; display: none; margin-top: 8px; }
+.photo-preview.show { display: block; }
+.remove-photo-btn { font-size: 12px; color: var(--danger); background: none; border: none; cursor: pointer; margin-top: 5px; }
+#photoFileInput { display: none; }
+
+/* ── BUTTONS ── */
+.btn { width: 100%; padding: 14px; border: none; border-radius: 13px; font-size: 15px; font-weight: 700; cursor: pointer; transition: opacity .15s; font-family: inherit; margin-top: 0; }
+.btn + .btn { margin-top: 8px; }
+.btn:active { opacity: .8; }
+.btn-primary { background: var(--primary); color: white; }
+.btn-outline { background: transparent; border: 2px solid var(--gray-200); color: var(--gray-700); }
+.btn-danger { background: var(--danger); color: white; }
+.btn-danger-outline { background: transparent; border: 2px solid var(--danger); color: var(--danger); }
+
+/* ── ROUTE DETAIL ── */
+.route-header-card { background: white; border-radius: var(--radius); padding: 15px; margin-bottom: 14px; box-shadow: var(--shadow); display: flex; align-items: center; gap: 13px; }
+.route-hdr-emoji { font-size: 36px; }
+.route-hdr-info h2 { font-size: 20px; font-weight: 800; }
+.route-hdr-info p { font-size: 12px; color: var(--gray-500); margin-top: 3px; }
+
+/* ── MAP ── */
+.map-card { background: white; border-radius: var(--radius); padding: 13px; margin-bottom: 14px; box-shadow: var(--shadow); }
+.map-card-hdr { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.map-card-title { font-size: 13px; font-weight: 700; color: var(--gray-700); }
+.map-gmaps-link { font-size: 12px; font-weight: 700; color: var(--primary); text-decoration: none; background: var(--primary-light); padding: 5px 11px; border-radius: 20px; }
+.map-wrap { width: 100%; border-radius: 9px; overflow: hidden; background: #e0f2fe; }
+.map-wrap svg { display: block; width: 100%; }
+.map-no-gps { font-size: 12px; color: var(--gray-500); text-align: center; padding: 18px; }
+
+/* ── TIMELINE ── */
+.section-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--gray-500); margin-bottom: 10px; padding-left: 4px; }
+.timeline { position: relative; }
+.timeline::before { content: ''; position: absolute; left: 19px; top: 22px; bottom: 24px; width: 2px; background: var(--gray-200); }
+.stop-card { background: white; border-radius: var(--radius); padding: 12px 12px 12px 50px; margin-bottom: 10px; box-shadow: var(--shadow); position: relative; }
+.stop-dot { position: absolute; left: 11px; top: 14px; width: 18px; height: 18px; background: var(--primary); border-radius: 50%; border: 3px solid white; box-shadow: 0 0 0 2px var(--primary); z-index: 1; }
+.stop-dot.start { background: var(--success); box-shadow: 0 0 0 2px var(--success); }
+.stop-dot.end { background: var(--danger); box-shadow: 0 0 0 2px var(--danger); }
+.stop-time { font-size: 11px; color: var(--gray-500); font-weight: 600; margin-bottom: 3px; }
+.stop-name { font-size: 15px; font-weight: 700; margin-bottom: 3px; }
+.stop-notes { font-size: 13px; color: var(--gray-700); line-height: 1.5; margin-bottom: 6px; white-space: pre-wrap; }
+.stop-coords { display: inline-block; font-size: 11px; color: var(--primary); background: var(--primary-light); border-radius: 6px; padding: 3px 9px; margin-bottom: 6px; cursor: pointer; text-decoration: none; }
+.stop-photo { width: 100%; max-height: 210px; object-fit: cover; border-radius: 9px; margin-top: 6px; cursor: pointer; }
+.stop-delete { font-size: 12px; color: var(--danger); background: none; border: none; cursor: pointer; margin-top: 6px; padding: 2px 0; }
+
+.empty-timeline { text-align: center; padding: 40px 16px; color: var(--gray-500); font-size: 14px; }
+.add-fab { position: fixed; bottom: calc(24px + env(safe-area-inset-bottom, 0)); right: 22px; width: 58px; height: 58px; background: var(--primary); color: white; border: none; border-radius: 50%; font-size: 28px; cursor: pointer; box-shadow: 0 4px 14px rgba(37,99,235,.45); display: flex; align-items: center; justify-content: center; z-index: 50; transition: transform .15s; }
+.add-fab:active { transform: scale(.88); }
+
+/* ── SYNC PANEL ── */
+.sync-section { background: white; border-radius: var(--radius); padding: 16px; margin-bottom: 12px; box-shadow: var(--shadow); }
+.sync-section-title { font-size: 15px; font-weight: 800; margin-bottom: 5px; }
+.sync-section-desc { font-size: 13px; color: var(--gray-500); line-height: 1.6; margin-bottom: 14px; }
+.sync-btn-row { display: flex; gap: 8px; }
+.sync-btn { flex: 1; padding: 12px; border: none; border-radius: 11px; font-size: 13px; font-weight: 700; cursor: pointer; font-family: inherit; }
+.sync-btn.export { background: var(--primary); color: white; }
+.sync-btn.import { background: var(--gray-100); color: var(--gray-700); border: 1.5px solid var(--gray-200); }
+.sync-btn:active { opacity: .8; }
+.install-card { background: linear-gradient(135deg, #1e40af, #2563eb); color: white; border-radius: var(--radius); padding: 18px; margin-bottom: 12px; }
+.install-card h3 { font-size: 16px; font-weight: 800; margin-bottom: 6px; }
+.install-card p { font-size: 13px; opacity: .9; line-height: 1.6; }
+.install-steps { margin-top: 10px; font-size: 13px; }
+.install-steps li { margin-bottom: 4px; opacity: .9; }
+
+/* ── DANGER ── */
+.danger-zone { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--gray-200); }
+.danger-label { font-size: 11px; font-weight: 700; color: var(--danger); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 8px; }
+
+/* ── TOAST ── */
+.toast { position: fixed; bottom: calc(80px + env(safe-area-inset-bottom,0)); left: 50%; transform: translateX(-50%) translateY(16px); background: rgba(17,24,39,.95); color: white; padding: 10px 18px; border-radius: 100px; font-size: 13px; font-weight: 600; opacity: 0; transition: all .22s; z-index: 999; white-space: nowrap; pointer-events: none; }
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* ── SPINNER ── */
+.spin { display: inline-block; width: 13px; height: 13px; border: 2px solid rgba(255,255,255,.3); border-top-color: white; border-radius: 50%; animation: rot .65s linear infinite; vertical-align: middle; margin-right: 4px; }
+@keyframes rot { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<!-- ══════════════ VIEW: LLISTA ══════════════ -->
+<div id="viewList" class="view active">
+  <div class="header">
+    <div class="header-inner">
+      <div class="header-title">🗺️ Les meves rutes</div>
+      <button class="header-btn ghost" onclick="showView('viewSync')" style="margin-right:4px">☁️</button>
+      <button class="header-btn primary" onclick="openNewRouteModal()">+ Nova</button>
+    </div>
+  </div>
+  <div class="view-body" id="routeListBody"></div>
+</div>
+
+<!-- ══════════════ VIEW: RUTA DETALL ══════════════ -->
+<div id="viewRoute" class="view">
+  <div class="header">
+    <div class="header-inner">
+      <button class="header-back" onclick="showView('viewList')">←</button>
+      <div class="header-title" id="routeTitle">Ruta</div>
+      <button class="header-btn ghost" onclick="openRouteSettings()">⚙️</button>
+    </div>
+  </div>
+  <div class="view-body">
+    <div id="routeHeaderEl"></div>
+    <div id="routeMapEl"></div>
+    <div class="section-label" id="stopsLabel">Parades</div>
+    <div class="timeline" id="stopsEl"></div>
+  </div>
+  <button class="add-fab" onclick="openAddStop()">＋</button>
+</div>
+
+<!-- ══════════════ VIEW: SINCRONITZACIÓ ══════════════ -->
+<div id="viewSync" class="view">
+  <div class="header">
+    <div class="header-inner">
+      <button class="header-back" onclick="showView('viewList')">←</button>
+      <div class="header-title">☁️ Còpia de seguretat</div>
+    </div>
+  </div>
+  <div class="view-body">
+
+    <div class="install-card">
+      <h3>📲 Instal·la l'app al mòbil</h3>
+      <p>Pots afegir aquesta pàgina a la pantalla d'inici per usar-la com una app.</p>
+      <ul class="install-steps">
+        <li><strong>iPhone/iPad:</strong> Safari → botó Compartir → "Afegir a pantalla d'inici"</li>
+        <li><strong>Android:</strong> Chrome → menú ⋮ → "Afegir a pantalla d'inici"</li>
+      </ul>
+    </div>
+
+    <div class="sync-section">
+      <div class="sync-section-title">📤 Exportar dades</div>
+      <div class="sync-section-desc">Guarda totes les rutes, parades, fotos i coordenades en un fitxer JSON. Pots guardar-lo a Drive o enviar-lo a un altre dispositiu.</div>
+      <div class="sync-btn-row">
+        <button class="sync-btn export" onclick="exportData()">⬇️ Descarregar JSON</button>
+      </div>
+      <div style="font-size:11px;color:var(--gray-500);margin-top:8px" id="exportInfo">—</div>
+    </div>
+
+    <div class="sync-section">
+      <div class="sync-section-title">📥 Importar dades</div>
+      <div class="sync-section-desc">Carrega un fitxer exportat des d'un altre dispositiu. Les rutes noves s'afegiran sense esborrar les actuals.</div>
+      <div class="sync-btn-row">
+        <button class="sync-btn import" onclick="document.getElementById('importFileInput').click()">⬆️ Seleccionar fitxer</button>
+      </div>
+      <input type="file" id="importFileInput" accept=".json,application/json" style="display:none" onchange="importData(event)">
+      <div style="font-size:11px;color:var(--gray-500);margin-top:8px" id="importInfo">—</div>
+    </div>
+
+    <div class="sync-section">
+      <div class="sync-section-title">ℹ️ Com sincronitzar entre dispositius</div>
+      <div class="sync-section-desc" style="margin-bottom:0">
+        1. Exporta des del dispositiu A → guarda el JSON a Drive o envia'l per WhatsApp / Mail.<br>
+        2. Obre el JSON al dispositiu B → importa'l amb el botó de dalt.<br>
+        3. Les rutes es fusionen automàticament sense duplicats.
+      </div>
+    </div>
+
+    <div class="sync-section">
+      <div class="sync-section-title" style="color:var(--danger)">⚠️ Zona perillosa</div>
+      <div class="sync-section-desc">Esborra totes les dades d'aquest dispositiu. Irreversible.</div>
+      <button class="btn btn-danger-outline" onclick="clearAllData()">🗑️ Esborrar totes les dades locals</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ MODAL: NOVA RUTA ══════════════ -->
+<div class="modal-overlay" id="modalNewRoute" onclick="closeModal('modalNewRoute')">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-handle"></div>
+    <div class="modal-title">Nova ruta</div>
+    <div class="form-group">
+      <label class="form-label">Nom de la ruta *</label>
+      <input class="form-input" id="newRouteName" type="text" placeholder="ex: Camí de Ronda, Montserrat..." maxlength="70">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Emoji</label>
+      <input class="form-input" id="newRouteEmoji" type="text" placeholder="🥾" maxlength="4" style="font-size:24px;text-align:center">
+    </div>
+    <button class="btn btn-primary" onclick="createRoute()">Crear ruta</button>
+    <button class="btn btn-outline" onclick="closeModal('modalNewRoute')">Cancel·lar</button>
+  </div>
+</div>
+
+<!-- ══════════════ MODAL: NOVA PARADA ══════════════ -->
+<div class="modal-overlay" id="modalAddStop" onclick="closeModal('modalAddStop')">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-handle"></div>
+    <div class="modal-title">Nova parada</div>
+    <div class="form-group">
+      <label class="form-label">📍 Nom del lloc *</label>
+      <input class="form-input" id="stopName" type="text" placeholder="ex: Mirador, Font, Refugi..." maxlength="80">
+    </div>
+    <div class="form-group">
+      <label class="form-label">🛰️ Coordenades GPS</label>
+      <div class="gps-row">
+        <button class="gps-capture-btn" id="gpsCaptureBtn" onclick="captureGPS()">📡 Capturar</button>
+        <div class="gps-display" id="gpsDisplay">No capturades</div>
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">⏱️ Hora d'arribada</label>
+      <div style="background:var(--gray-100);border-radius:10px;padding:10px 13px;font-size:14px;font-weight:600;color:var(--gray-700)" id="stopTimeDisplay">—</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">📝 Notes</label>
+      <textarea class="form-textarea" id="stopNotes" placeholder="Condicions, distàncies, recomanacions..."></textarea>
+    </div>
+    <div class="form-group">
+      <label class="form-label">📷 Foto</label>
+      <div class="photo-area" onclick="document.getElementById('photoFileInput').click()">
+        <div class="icon">📷</div>
+        <div>Toca per fer una foto o triar-ne una</div>
+      </div>
+      <input type="file" id="photoFileInput" accept="image/*" capture="environment" onchange="handlePhoto(event)">
+      <img id="photoPreview" class="photo-preview" alt="">
+      <button class="remove-photo-btn" id="removePhotoBtn" style="display:none" onclick="removePhoto()">✕ Treure foto</button>
+    </div>
+    <button class="btn btn-primary" onclick="addStop()">Afegir parada</button>
+    <button class="btn btn-outline" onclick="closeModal('modalAddStop')">Cancel·lar</button>
+  </div>
+</div>
+
+<!-- ══════════════ MODAL: AJUSTOS RUTA ══════════════ -->
+<div class="modal-overlay" id="modalRouteSettings" onclick="closeModal('modalRouteSettings')">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-handle"></div>
+    <div class="modal-title">Ajustos de la ruta</div>
+    <div class="form-group">
+      <label class="form-label">Nom</label>
+      <input class="form-input" id="editRouteName" type="text" maxlength="70">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Emoji</label>
+      <input class="form-input" id="editRouteEmoji" type="text" maxlength="4" style="font-size:24px;text-align:center">
+    </div>
+    <button class="btn btn-primary" onclick="saveRouteSettings()">Desar canvis</button>
+    <div class="danger-zone">
+      <div class="danger-label">Zona perillosa</div>
+      <button class="btn btn-danger-outline" onclick="deleteRoute()">🗑️ Eliminar ruta i totes les parades</button>
+    </div>
+    <button class="btn btn-outline" onclick="closeModal('modalRouteSettings')">Cancel·lar</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ═══════════════════════════════════════════
+//  CONSTANTS & STATE
+// ═══════════════════════════════════════════
+const KEY = 'itineraris_pwa_v1';
+function load() { try { return JSON.parse(localStorage.getItem(KEY)) || { routes:[] }; } catch { return { routes:[] }; } }
+function save(s) { localStorage.setItem(KEY, JSON.stringify(s)); }
+
+let state = load();
+let currentRouteId = null;
+let pendingPhoto = null;
+let pendingGPS = null;
+
+// ═══════════════════════════════════════════
+//  HELPERS
+// ═══════════════════════════════════════════
+function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function fmtDT(iso) {
+  const d = new Date(iso);
+  return d.toLocaleDateString('ca-ES',{day:'2-digit',month:'short'}) + ' · ' + d.toLocaleTimeString('ca-ES',{hour:'2-digit',minute:'2-digit'});
+}
+function fmtDate(iso) { return new Date(iso).toLocaleDateString('ca-ES',{day:'numeric',month:'long',year:'numeric'}); }
+function showView(id) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  window.scrollTo(0,0);
+}
+function toast(msg, ms=2600) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), ms);
+}
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+// ═══════════════════════════════════════════
+//  ROUTE LIST
+// ═══════════════════════════════════════════
+function renderList() {
+  const body = document.getElementById('routeListBody');
+  if (!state.routes.length) {
+    body.innerHTML = `<div class="empty-state">
+      <div class="icon">🗺️</div>
+      <h3>Cap ruta encara</h3>
+      <p>Crea la teva primera ruta per<br>registrar les teves aventures!</p>
+    </div>`;
+    return;
+  }
+  body.innerHTML = state.routes.map(r => {
+    const n = r.stops.length;
+    const last = n ? r.stops[n-1] : null;
+    const meta = last ? 'Última: ' + fmtDT(last.timestamp) : 'Creada: ' + fmtDate(r.createdAt);
+    return `<div class="route-card" onclick="openRoute('${r.id}')">
+      <div class="route-icon">${r.emoji||'🥾'}</div>
+      <div class="route-info">
+        <div class="route-name">${esc(r.name)}</div>
+        <div class="route-meta">${meta}</div>
+      </div>
+      <div class="route-badge">${n} parada${n!==1?'es':''}</div>
+    </div>`;
+  }).join('');
+}
+
+// ═══════════════════════════════════════════
+//  GPS
+// ═══════════════════════════════════════════
+function captureGPS() {
+  const btn = document.getElementById('gpsCaptureBtn');
+  const disp = document.getElementById('gpsDisplay');
+  if (!navigator.geolocation) { toast('⚠️ GPS no disponible'); return; }
+  btn.innerHTML = '<span class="spin"></span>Buscant...';
+  btn.disabled = true;
+  navigator.geolocation.getCurrentPosition(
+    pos => {
+      pendingGPS = { lat: pos.coords.latitude, lng: pos.coords.longitude, acc: Math.round(pos.coords.accuracy) };
+      disp.textContent = `${pendingGPS.lat.toFixed(5)}, ${pendingGPS.lng.toFixed(5)} (±${pendingGPS.acc}m)`;
+      btn.className = 'gps-capture-btn captured';
+      btn.innerHTML = '✅ Capturat';
+      btn.disabled = false;
+    },
+    err => {
+      const msgs = {1:'Permís denegat',2:'No disponible',3:'Temps exhaurit'};
+      disp.textContent = 'Error: ' + (msgs[err.code]||'desconegut');
+      btn.innerHTML = '📡 Reintentar';
+      btn.disabled = false;
+    },
+    { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+  );
+}
+
+// ═══════════════════════════════════════════
+//  MAP SVG
+// ═══════════════════════════════════════════
+function buildMap(stops) {
+  const pts = stops.filter(s => s.lat != null && s.lng != null);
+  if (!pts.length) return `<div class="map-no-gps">📡 Afegeix parades amb GPS per veure el mapa</div>`;
+
+  const lats = pts.map(p=>p.lat), lngs = pts.map(p=>p.lng);
+  const [minLat,maxLat] = [Math.min(...lats),Math.max(...lats)];
+  const [minLng,maxLng] = [Math.min(...lngs),Math.max(...lngs)];
+  const W=400, H=220, P=34;
+  const sx = maxLng===minLng ? 0 : (W-2*P)/(maxLng-minLng);
+  const sy = maxLat===minLat ? 0 : (H-2*P)/(maxLat-minLat);
+
+  const coords = pts.map(p => ({
+    x: maxLng===minLng ? W/2 : P+(p.lng-minLng)*sx,
+    y: maxLat===minLat ? H/2 : H-P-(p.lat-minLat)*sy
+  }));
+
+  const path = coords.map((c,i)=>`${i?'L':'M'}${c.x.toFixed(1)},${c.y.toFixed(1)}`).join(' ');
+  const dots = coords.map((c,i) => {
+    const fill = i===0 ? '#16a34a' : i===coords.length-1 ? '#dc2626' : '#2563eb';
+    return `<circle cx="${c.x.toFixed(1)}" cy="${c.y.toFixed(1)}" r="9" fill="${fill}" stroke="white" stroke-width="2.5"/>
+      <text x="${c.x.toFixed(1)}" y="${(c.y+.5).toFixed(1)}" text-anchor="middle" dominant-baseline="middle" fill="white" font-size="9" font-weight="bold" font-family="system-ui,-apple-system">${i+1}</text>`;
+  }).join('');
+
+  return `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">
+    <defs><linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#e0f2fe"/><stop offset="100%" stop-color="#f0fdf4"/></linearGradient></defs>
+    <rect width="${W}" height="${H}" fill="url(#bg)" rx="10"/>
+    <path d="${path}" stroke="#2563eb" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity=".9"/>
+    ${dots}
+    <text x="8" y="${H-7}" fill="#16a34a" font-size="9" font-family="system-ui" font-weight="bold">▶ Inici</text>
+    <text x="${W-8}" y="${H-7}" fill="#dc2626" font-size="9" font-family="system-ui" font-weight="bold" text-anchor="end">■ Final</text>
+  </svg>`;
+}
+
+function gmapsUrl(stops) {
+  const pts = stops.filter(s=>s.lat!=null&&s.lng!=null);
+  if (!pts.length) return null;
+  if (pts.length===1) return `https://www.google.com/maps?q=${pts[0].lat},${pts[0].lng}`;
+  return `https://www.google.com/maps/dir/${pts.map(p=>`${p.lat},${p.lng}`).join('/')}`;
+}
+
+// ═══════════════════════════════════════════
+//  ROUTE CRUD
+// ═══════════════════════════════════════════
+function openNewRouteModal() {
+  document.getElementById('newRouteName').value = '';
+  document.getElementById('newRouteEmoji').value = '';
+  openModal('modalNewRoute');
+  setTimeout(()=>document.getElementById('newRouteName').focus(), 250);
+}
+
+function createRoute() {
+  const name = document.getElementById('newRouteName').value.trim();
+  if (!name) { toast('⚠️ Posa un nom'); return; }
+  const emoji = document.getElementById('newRouteEmoji').value.trim() || '🥾';
+  const r = { id:uid(), name, emoji, createdAt:new Date().toISOString(), stops:[] };
+  state.routes.unshift(r);
+  save(state);
+  closeModal('modalNewRoute');
+  renderList();
+  openRoute(r.id);
+  toast('✅ Ruta creada!');
+}
+
+function openRoute(id) {
+  currentRouteId = id;
+  renderRoute();
+  showView('viewRoute');
+}
+
+function renderRoute() {
+  const r = state.routes.find(r=>r.id===currentRouteId);
+  if (!r) { showView('viewList'); return; }
+
+  document.getElementById('routeTitle').textContent = r.name;
+  document.getElementById('routeHeaderEl').innerHTML = `
+    <div class="route-header-card">
+      <div class="route-hdr-emoji">${r.emoji||'🥾'}</div>
+      <div class="route-hdr-info"><h2>${esc(r.name)}</h2><p>${fmtDate(r.createdAt)} · ${r.stops.length} parades</p></div>
+    </div>`;
+
+  const gUrl = gmapsUrl(r.stops);
+  document.getElementById('routeMapEl').innerHTML = `
+    <div class="map-card">
+      <div class="map-card-hdr">
+        <div class="map-card-title">🗺️ Mapa de la ruta</div>
+        ${gUrl ? `<a class="map-gmaps-link" href="${gUrl}" target="_blank" rel="noopener">Google Maps ↗</a>` : ''}
+      </div>
+      <div class="map-wrap">${buildMap(r.stops)}</div>
+    </div>`;
+
+  document.getElementById('stopsLabel').textContent = `Parades (${r.stops.length})`;
+
+  if (!r.stops.length) {
+    document.getElementById('stopsEl').innerHTML = `<div class="empty-timeline">📍 Prem <strong>+</strong> per afegir la primera parada</div>`;
+    return;
+  }
+
+  const last = r.stops.length - 1;
+  document.getElementById('stopsEl').innerHTML = r.stops.map((s,i) => {
+    const dotCls = i===0 ? 'start' : i===last ? 'end' : '';
+    const coordHtml = s.lat!=null
+      ? `<a class="stop-coords" href="https://www.google.com/maps?q=${s.lat},${s.lng}" target="_blank" rel="noopener">📍 ${s.lat.toFixed(5)}, ${s.lng.toFixed(5)}</a>`
+      : '';
+    const notesHtml = s.notes ? `<div class="stop-notes">${esc(s.notes)}</div>` : '';
+    const photoHtml = s.photo ? `<img class="stop-photo" src="${s.photo}" onclick="viewPhoto(this.src)" alt="">` : '';
+    return `<div class="stop-card">
+      <div class="stop-dot ${dotCls}"></div>
+      <div class="stop-time">🕐 ${fmtDT(s.timestamp)}</div>
+      <div class="stop-name">📍 ${esc(s.name)}</div>
+      ${coordHtml}${notesHtml}${photoHtml}
+      <button class="stop-delete" onclick="deleteStop('${s.id}')">🗑️ Eliminar parada</button>
+    </div>`;
+  }).join('');
+}
+
+function openRouteSettings() {
+  const r = state.routes.find(r=>r.id===currentRouteId);
+  if (!r) return;
+  document.getElementById('editRouteName').value = r.name;
+  document.getElementById('editRouteEmoji').value = r.emoji||'🥾';
+  openModal('modalRouteSettings');
+}
+
+function saveRouteSettings() {
+  const name = document.getElementById('editRouteName').value.trim();
+  if (!name) { toast('⚠️ Cal un nom'); return; }
+  const r = state.routes.find(r=>r.id===currentRouteId);
+  if (!r) return;
+  r.name = name; r.emoji = document.getElementById('editRouteEmoji').value.trim() || '🥾';
+  save(state); closeModal('modalRouteSettings'); renderRoute();
+  toast('✅ Desat');
+}
+
+function deleteRoute() {
+  const r = state.routes.find(r=>r.id===currentRouteId);
+  if (!r || !confirm(`Eliminar "${r.name}"?`)) return;
+  state.routes = state.routes.filter(r=>r.id!==currentRouteId);
+  save(state); closeModal('modalRouteSettings');
+  renderList(); showView('viewList');
+  toast('🗑️ Ruta eliminada');
+}
+
+// ═══════════════════════════════════════════
+//  STOP CRUD
+// ═══════════════════════════════════════════
+function openAddStop() {
+  document.getElementById('stopName').value = '';
+  document.getElementById('stopNotes').value = '';
+  document.getElementById('gpsDisplay').textContent = 'No capturades';
+  document.getElementById('gpsCaptureBtn').className = 'gps-capture-btn';
+  document.getElementById('gpsCaptureBtn').innerHTML = '📡 Capturar';
+  document.getElementById('gpsCaptureBtn').disabled = false;
+  document.getElementById('stopTimeDisplay').textContent = '⏱ ' + fmtDT(new Date().toISOString());
+  document.getElementById('photoPreview').classList.remove('show');
+  document.getElementById('removePhotoBtn').style.display = 'none';
+  document.getElementById('photoFileInput').value = '';
+  pendingPhoto = null; pendingGPS = null;
+  openModal('modalAddStop');
+  setTimeout(()=>{ document.getElementById('stopName').focus(); captureGPS(); }, 300);
+}
+
+function handlePhoto(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const img = new Image(), reader = new FileReader();
+  reader.onload = ev => {
+    img.onload = () => {
+      const c = document.createElement('canvas');
+      const MAX = 1100; let w=img.width, h=img.height;
+      if (w>MAX){h=h*MAX/w;w=MAX;} if(h>MAX){w=w*MAX/h;h=MAX;}
+      c.width=w; c.height=h;
+      c.getContext('2d').drawImage(img,0,0,w,h);
+      pendingPhoto = c.toDataURL('image/jpeg',.72);
+      const prev = document.getElementById('photoPreview');
+      prev.src = pendingPhoto; prev.classList.add('show');
+      document.getElementById('removePhotoBtn').style.display = 'block';
+    };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function removePhoto() {
+  pendingPhoto = null;
+  document.getElementById('photoPreview').classList.remove('show');
+  document.getElementById('removePhotoBtn').style.display = 'none';
+  document.getElementById('photoFileInput').value = '';
+}
+
+function addStop() {
+  const name = document.getElementById('stopName').value.trim();
+  if (!name) { toast('⚠️ Posa un nom a la parada'); return; }
+  const r = state.routes.find(r=>r.id===currentRouteId);
+  if (!r) return;
+  r.stops.push({
+    id: uid(), name,
+    timestamp: new Date().toISOString(),
+    notes: document.getElementById('stopNotes').value.trim(),
+    photo: pendingPhoto || null,
+    lat: pendingGPS?.lat ?? null,
+    lng: pendingGPS?.lng ?? null,
+    acc: pendingGPS?.acc ?? null
+  });
+  save(state); closeModal('modalAddStop'); renderRoute();
+  toast('📍 Parada afegida!');
+  pendingPhoto = null; pendingGPS = null;
+}
+
+function deleteStop(stopId) {
+  if (!confirm('Eliminar aquesta parada?')) return;
+  const r = state.routes.find(r=>r.id===currentRouteId);
+  if (!r) return;
+  r.stops = r.stops.filter(s=>s.id!==stopId);
+  save(state); renderRoute();
+  toast('🗑️ Parada eliminada');
+}
+
+function viewPhoto(src) {
+  const ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.94);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;cursor:zoom-out';
+  const img = document.createElement('img');
+  img.src=src; img.style.cssText='max-width:100%;max-height:100%;border-radius:10px;object-fit:contain';
+  ov.appendChild(img); ov.onclick=()=>document.body.removeChild(ov);
+  document.body.appendChild(ov);
+}
+
+// ═══════════════════════════════════════════
+//  EXPORT / IMPORT
+// ═══════════════════════════════════════════
+function exportData() {
+  const json = JSON.stringify(state, null, 2);
+  const blob = new Blob([json], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const date = new Date().toISOString().slice(0,10);
+  a.href = url; a.download = `itineraris_${date}.json`;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a); URL.revokeObjectURL(url);
+  const photos = state.routes.reduce((n,r)=>n+r.stops.filter(s=>s.photo).length, 0);
+  document.getElementById('exportInfo').textContent =
+    `Exportat: ${state.routes.length} rutes, ${state.routes.reduce((n,r)=>n+r.stops.length,0)} parades, ${photos} fotos.`;
+  toast('📤 Fitxer descarregat!');
+}
+
+function importData(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try {
+      const loaded = JSON.parse(ev.target.result);
+      if (!loaded.routes || !Array.isArray(loaded.routes)) throw new Error('Format invàlid');
+      const localIds = new Set(state.routes.map(r=>r.id));
+      let added = 0;
+      for (const r of loaded.routes) {
+        if (!localIds.has(r.id)) { state.routes.push(r); added++; }
+      }
+      save(state); renderList();
+      document.getElementById('importInfo').textContent = `Importat: ${added} rutes noves afegides. Total: ${state.routes.length}.`;
+      toast(`✅ ${added} rutes noves importades!`);
+    } catch (err) {
+      document.getElementById('importInfo').textContent = `❌ Error: ${err.message}`;
+      toast('❌ Fitxer invàlid');
+    }
+    e.target.value = '';
+  };
+  reader.readAsText(file);
+}
+
+function clearAllData() {
+  if (!confirm('Segur que vols esborrar TOTES les rutes i parades?\nAquesta acció és irreversible.')) return;
+  state = { routes:[] };
+  save(state); renderList();
+  showView('viewList');
+  toast('🗑️ Totes les dades esborrades');
+}
+
+// ═══════════════════════════════════════════
+//  PWA MANIFEST (injectat dinàmicament per Chrome Android)
+// ═══════════════════════════════════════════
+(function injectManifest() {
+  try {
+    const manifest = {
+      name: "Les meves rutes",
+      short_name: "Rutes",
+      description: "Registra les teves excursions amb GPS i fotos",
+      start_url: "./",
+      display: "standalone",
+      background_color: "#ffffff",
+      theme_color: "#2563eb",
+      orientation: "portrait",
+      icons: [{
+        src: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect width='192' height='192' rx='44' fill='%232563eb'/%3E%3Ctext x='96' y='138' text-anchor='middle' font-size='110'%3E🗺%3C/text%3E%3C/svg%3E",
+        sizes: "192x192", type: "image/svg+xml", purpose: "any maskable"
+      }]
+    };
+    const blob = new Blob([JSON.stringify(manifest)], {type:'application/manifest+json'});
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('link');
+    link.rel='manifest'; link.href=url;
+    document.head.appendChild(link);
+  } catch(e) {}
+})();
+
+// ═══════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════
+renderList();
+</script>
+</body>
+</html>
