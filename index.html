@@ -350,12 +350,47 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
       <label class="fl">Emoji</label>
       <input class="fi" id="editRouteEmoji" type="text" maxlength="4" style="font-size:24px;text-align:center">
     </div>
+    <div class="fg" style="background:var(--gray-50);border-radius:12px;padding:13px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <div>
+          <div style="font-size:14px;font-weight:700">🔗 Compartir ruta</div>
+          <div style="font-size:12px;color:var(--gray-500);margin-top:2px">Qualsevol amb l'enllaç pot veure-la</div>
+        </div>
+        <label style="position:relative;display:inline-block;width:44px;height:26px;flex-shrink:0">
+          <input type="checkbox" id="editRouteShared" style="opacity:0;width:0;height:0" onchange="window.toggleShareUrl()">
+          <span id="shareToggleSpan" style="position:absolute;inset:0;background:var(--gray-300);border-radius:13px;cursor:pointer;transition:background .2s"></span>
+          <span id="shareToggleKnob" style="position:absolute;left:3px;top:3px;width:20px;height:20px;background:white;border-radius:50%;transition:transform .2s;box-shadow:0 1px 3px rgba(0,0,0,.3)"></span>
+        </label>
+      </div>
+      <div id="shareUrlBox" style="display:none">
+        <div style="background:white;border:1.5px solid var(--gray-200);border-radius:9px;padding:9px 11px;font-size:12px;color:var(--primary);word-break:break-all;margin-bottom:7px" id="shareUrlText"></div>
+        <button class="btn btn-o" style="padding:10px;font-size:13px" onclick="window.copyShareUrl()">📋 Copiar enllaç</button>
+      </div>
+    </div>
     <button class="btn btn-p" onclick="window.saveRouteSettings()">Desar canvis</button>
     <div class="danger-zone">
       <div class="dz-label">Zona perillosa</div>
       <button class="btn btn-do" onclick="window.deleteRoute()">🗑️ Eliminar ruta</button>
     </div>
     <button class="btn btn-o" onclick="window.closeModal('modalRouteSettings')">Cancel·lar</button>
+  </div>
+</div>
+
+<!-- ══ VISTA PÚBLICA ══ -->
+<div id="viewShare" class="view" style="display:none">
+  <div class="header">
+    <div class="header-inner">
+      <div class="header-title" id="shareTitle">Ruta compartida</div>
+    </div>
+  </div>
+  <div class="vb">
+    <div id="shareHeaderEl"></div>
+    <div id="shareMapEl"></div>
+    <div class="sec-label" id="shareStopsLabel">Parades</div>
+    <div class="timeline" id="shareStopsEl"></div>
+    <div style="text-align:center;margin-top:20px;font-size:12px;color:var(--gray-500)">
+      Creat amb <a href="https://joanmam.github.io/itineraris/" style="color:var(--primary)">Les meves rutes</a>
+    </div>
   </div>
 </div>
 
@@ -366,8 +401,8 @@ import { initializeApp }        from 'https://www.gstatic.com/firebasejs/10.12.0
 import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect,
          getRedirectResult, signOut as fbSignOut, onAuthStateChanged }
   from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
-import { initializeFirestore, persistentLocalCache, collection, doc,
-         setDoc, deleteDoc, onSnapshot }
+import { initializeFirestore, getFirestore, persistentLocalCache, collection, doc,
+         setDoc, deleteDoc, onSnapshot, getDoc }
   from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { getStorage, ref as sRef, uploadBytes, getDownloadURL, deleteObject }
   from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js';
@@ -422,6 +457,8 @@ window.closeModal = id => $(id).classList.remove('open');
 
 // ═══════════ AUTH ═══════════
 onAuthStateChanged(auth, async user => {
+  // If we're in shared-route mode, don't interfere
+  if (new URLSearchParams(location.search).get('r')) return;
   currentUser = user;
   if (user) {
     showView('viewList');
@@ -436,6 +473,54 @@ onAuthStateChanged(auth, async user => {
 
 // Handle redirect result (for mobile redirect flow)
 getRedirectResult(auth).catch(() => {});
+
+// ═══════════ SHARED ROUTE (public view) ═══════════
+(async function checkSharedRoute() {
+  const params = new URLSearchParams(location.search);
+  const shareParam = params.get('r'); // format: uid:routeId
+  if (!shareParam) return;
+  const [uid, routeId] = shareParam.split(':');
+  if (!uid || !routeId) return;
+
+  // Show loading while we fetch
+  showView('viewLoading');
+  try {
+    // Use a plain Firestore instance (no persistence needed for public view)
+    const pubDb = getFirestore(app);
+    const snap = await getDoc(doc(pubDb, 'users', uid, 'routes', routeId));
+    if (!snap.exists()) { showShareError('Ruta no trobada'); return; }
+    const r = { id: snap.id, ...snap.data() };
+    if (!r.shared) { showShareError('Aquesta ruta no és pública'); return; }
+    renderSharedRoute(r);
+  } catch(err) {
+    showShareError('Error carregant la ruta: ' + err.message);
+  }
+})();
+
+function showShareError(msg) {
+  document.getElementById('viewLoading').innerHTML = `<div style="text-align:center;padding:40px 24px"><div style="font-size:48px;margin-bottom:16px">😕</div><div style="font-size:16px;color:#374151">${msg}</div><div style="margin-top:20px"><a href="./" style="color:#2563eb;font-size:14px">Anar a l'app</a></div></div>`;
+}
+
+function renderSharedRoute(r) {
+  const stops = r.stops || [];
+  $('shareTitle').textContent = r.name;
+  $('shareHeaderEl').innerHTML = `<div class="rhcard"><div class="rh-emoji">${r.emoji||'🥾'}</div><div class="rh-info"><h2>${esc(r.name)}</h2><p>${fmtDate(r.createdAt)} · ${stops.length} parades</p></div></div>`;
+  const gUrl = gmapsUrl(stops);
+  $('shareMapEl').innerHTML = `<div class="map-card"><div class="map-hdr"><div class="map-title">🗺️ Mapa de la ruta</div>${gUrl?`<a class="map-link" href="${gUrl}" target="_blank" rel="noopener">Google Maps ↗</a>`:''}</div><div class="map-wrap">${buildMap(stops)}</div></div>`;
+  $('shareStopsLabel').textContent = `Parades (${stops.length})`;
+  if (!stops.length) { $('shareStopsEl').innerHTML = `<div class="empty-tl">Aquesta ruta no té parades encara</div>`; }
+  else {
+    const last = stops.length - 1;
+    $('shareStopsEl').innerHTML = stops.map((s, i) => {
+      const cls = i===0?'s':i===last?'e':'';
+      const coord = s.lat!=null ? `<a class="scoords" href="https://www.google.com/maps?q=${s.lat},${s.lng}" target="_blank" rel="noopener">📍 ${s.lat.toFixed(5)}, ${s.lng.toFixed(5)}</a>` : '';
+      const notes = s.notes ? `<div class="snotes">${esc(s.notes)}</div>` : '';
+      const photo = s.photoUrl ? `<img class="sphoto" src="${s.photoUrl}" onclick="window.viewPhoto('${s.photoUrl}')" alt="" loading="lazy">` : '';
+      return `<div class="stop-card"><div class="sdot ${cls}"></div><div class="st">🕐 ${fmtDT(s.timestamp)}</div><div class="sn">📍 ${esc(s.name)}</div>${coord}${notes}${photo}</div>`;
+    }).join('');
+  }
+  showView('viewShare');
+}
 
 window.signIn = async function() {
   const provider = new GoogleAuthProvider();
@@ -641,12 +726,40 @@ window.renderRoute = renderRoute;
 window.openRouteSettings = function() {
   const r = routes.find(r=>r.id===currentRouteId); if (!r) return;
   $('editRouteName').value = r.name; $('editRouteEmoji').value = r.emoji||'🥾';
+  const shared = !!r.shared;
+  $('editRouteShared').checked = shared;
+  updateShareToggleUI(shared);
+  if (shared) updateShareUrlDisplay(currentUser.uid, r.id);
   window.openModal('modalRouteSettings');
 };
+
+function updateShareToggleUI(on) {
+  $('shareToggleSpan').style.background = on ? 'var(--primary)' : 'var(--gray-300)';
+  $('shareToggleKnob').style.transform = on ? 'translateX(18px)' : 'translateX(0)';
+  $('shareUrlBox').style.display = on ? 'block' : 'none';
+}
+function updateShareUrlDisplay(uid, routeId) {
+  const url = `${location.origin}${location.pathname}?r=${uid}:${routeId}`;
+  $('shareUrlText').textContent = url;
+}
+window.toggleShareUrl = function() {
+  const on = $('editRouteShared').checked;
+  updateShareToggleUI(on);
+  if (on) updateShareUrlDisplay(currentUser.uid, currentRouteId);
+};
+window.copyShareUrl = function() {
+  const url = $('shareUrlText').textContent;
+  navigator.clipboard.writeText(url).then(() => toast('📋 Enllaç copiat!')).catch(() => {
+    $('shareUrlText').select?.();
+    toast('Copia manualment l\'URL');
+  });
+};
+
 window.saveRouteSettings = async function() {
   const name = $('editRouteName').value.trim(); if (!name) { toast('⚠️ Cal un nom'); return; }
   const r = routes.find(r=>r.id===currentRouteId); if (!r) return;
-  await saveRoute({ ...r, name, emoji: $('editRouteEmoji').value.trim()||'🥾' });
+  const shared = $('editRouteShared').checked;
+  await saveRoute({ ...r, name, emoji: $('editRouteEmoji').value.trim()||'🥾', shared });
   window.closeModal('modalRouteSettings'); toast('✅ Desat');
 };
 window.deleteRoute = async function() {
