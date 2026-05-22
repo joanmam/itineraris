@@ -402,7 +402,7 @@ import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect,
          getRedirectResult, signOut as fbSignOut, onAuthStateChanged }
   from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
 import { initializeFirestore, getFirestore, persistentLocalCache, collection, doc,
-         setDoc, deleteDoc, onSnapshot, getDoc }
+         setDoc, deleteDoc, onSnapshot, getDoc, getDocs }
   from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { getStorage, ref as sRef, uploadBytes, getDownloadURL, deleteObject }
   from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js';
@@ -464,6 +464,7 @@ onAuthStateChanged(auth, async user => {
     showView('viewList');
     startListener();
     renderUserInfo();
+    setTimeout(syncPendingPhotos, 2000); // sync pending after listener is ready
   } else {
     if (routesListener) { routesListener(); routesListener = null; }
     routes = [];
@@ -584,6 +585,54 @@ async function saveRoute(route) {
 async function removeRoute(id) {
   if (!currentUser) return;
   await deleteDoc(routeDoc(id));
+}
+
+// ═══════════ OFFLINE PHOTO QUEUE ═══════════
+function pendingPhotosRef() {
+  return collection(db, 'users', currentUser.uid, 'pendingPhotos');
+}
+function pendingPhotoDoc(stopId) {
+  return doc(db, 'users', currentUser.uid, 'pendingPhotos', stopId);
+}
+
+async function savePendingPhoto(routeId, stopId, dataUrl) {
+  await setDoc(pendingPhotoDoc(stopId), {
+    routeId, stopId, dataUrl, savedAt: new Date().toISOString()
+  });
+}
+
+async function syncPendingPhotos() {
+  if (!currentUser || !navigator.onLine) return;
+  let snap;
+  try { snap = await getDocs(pendingPhotosRef()); } catch { return; }
+  if (snap.empty) return;
+
+  let synced = 0;
+  for (const d of snap.docs) {
+    const { routeId, stopId, dataUrl } = d.data();
+    try {
+      const resp = await fetch(dataUrl);
+      const blob = await resp.blob();
+      const path = `users/${currentUser.uid}/photos/${routeId}/${stopId}.jpg`;
+      const photoRef = sRef(storage, path);
+      await uploadBytes(photoRef, blob, { contentType: 'image/jpeg' });
+      const url = await getDownloadURL(photoRef);
+
+      // Update the stop in the route
+      const route = routes.find(r => r.id === routeId);
+      if (route) {
+        const updatedStops = route.stops.map(s =>
+          s.id === stopId ? { ...s, photoUrl: url, photoPath: path, photoPending: false } : s
+        );
+        await saveRoute({ ...route, stops: updatedStops });
+      }
+      await deleteDoc(d.ref);
+      synced++;
+    } catch(err) {
+      console.error('Error syncing pending photo:', stopId, err);
+    }
+  }
+  if (synced > 0) toast(`✅ ${synced} foto${synced>1?'s':''} sincronitzada${synced>1?'es':''} ara que tens connexió!`, 3500);
 }
 
 // ═══════════ STORAGE ═══════════
@@ -717,7 +766,11 @@ function renderRoute() {
     const cls = i===0?'s':i===last?'e':'';
     const coord = s.lat!=null ? `<a class="scoords" href="https://www.google.com/maps?q=${s.lat},${s.lng}" target="_blank" rel="noopener">📍 ${s.lat.toFixed(5)}, ${s.lng.toFixed(5)}</a>` : '';
     const notes = s.notes ? `<div class="snotes">${esc(s.notes)}</div>` : '';
-    const photo = s.photoUrl ? `<img class="sphoto" src="${s.photoUrl}" onclick="window.viewPhoto('${s.photoUrl}')" alt="" loading="lazy">` : '';
+    const photo = s.photoUrl
+      ? `<img class="sphoto" src="${s.photoUrl}" onclick="window.viewPhoto('${s.photoUrl}')" alt="" loading="lazy">`
+      : s.photoPending
+        ? `<div style="background:rgba(217,119,6,.1);border:1.5px dashed var(--warn);border-radius:9px;padding:10px;font-size:12px;color:var(--warn);margin-top:6px">⏳ Foto pendent — es pujarà quan tinguis connexió</div>`
+        : '';
     return `<div class="stop-card"><div class="sdot ${cls}"></div><div class="st">🕐 ${fmtDT(s.timestamp)}</div><div class="sn">📍 ${esc(s.name)}</div>${coord}${notes}${photo}<button class="sdel" onclick="window.deleteStop('${s.id}')">🗑️ Eliminar parada</button></div>`;
   }).join('');
 }
@@ -815,34 +868,37 @@ window.addStop = async function() {
   const btn = $('addStopBtn');
   btn.disabled=true; btn.innerHTML='<span class="spin"></span>Desant...';
 
-  let photoUrl=null, photoPath=null;
+  let photoUrl=null, photoPath=null, photoPending=false;
   if (pendingPhoto) {
     if (!navigator.onLine) {
-      toast('⚠️ Sense connexió — la foto no s\'ha pogut pujar');
+      // Save to offline queue
+      await savePendingPhoto(currentRouteId, stopId, pendingPhoto);
+      photoPending = true;
+      toast('📱 Sense connexió — foto guardada, es pujarà automàticament quan tinguis internet', 4000);
     } else {
       try {
         $('uploadBar').classList.add('show');
         $('uploadFill').style.width='20%';
         toast('📤 Pujant foto...', 8000);
-        // Step 1: Convert data URL to Blob
         const resp = await fetch(pendingPhoto);
         const blob = await resp.blob();
-        $('uploadFill').style.width='40%';
-        // Step 2: Build storage ref
+        $('uploadFill').style.width='50%';
         const path = `users/${currentUser.uid}/photos/${currentRouteId}/${stopId}.jpg`;
         const photoRef = sRef(storage, path);
-        $('uploadFill').style.width='55%';
-        // Step 3: Upload
         await uploadBytes(photoRef, blob, { contentType: 'image/jpeg' });
-        $('uploadFill').style.width='80%';
-        // Step 4: Get URL
+        $('uploadFill').style.width='85%';
         const url = await getDownloadURL(photoRef);
         $('uploadFill').style.width='100%';
         photoUrl = url; photoPath = path;
         toast('✅ Foto pujada!');
       } catch(err) {
         console.error('Storage upload error:', err.code, err.message, err);
-        toast('❌ Error foto ['+( err.code||'?')+'] '+err.message, 6000);
+        // Fallback: save to offline queue
+        try {
+          await savePendingPhoto(currentRouteId, stopId, pendingPhoto);
+          photoPending = true;
+          toast('⚠️ Error pujant — foto guardada, es sincronitzarà aviat', 4000);
+        } catch { toast('❌ Error foto: ' + (err.code||err.message), 4000); }
       }
     }
   }
@@ -854,7 +910,7 @@ window.addStop = async function() {
     lat: pendingGPS?.lat ?? null,
     lng: pendingGPS?.lng ?? null,
     acc: pendingGPS?.acc ?? null,
-    photoUrl, photoPath
+    photoUrl, photoPath, photoPending
   };
 
   const updated = { ...r, stops: [...(r.stops||[]), stop] };
@@ -974,8 +1030,8 @@ window.testStorage = async function() {
   }
 };
 
-// Online status update
-window.addEventListener('online', renderUserInfo);
+// Online status update + sync pending photos
+window.addEventListener('online', () => { renderUserInfo(); syncPendingPhotos(); });
 window.addEventListener('offline', renderUserInfo);
 
 </script>
