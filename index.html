@@ -616,21 +616,30 @@ async function syncPendingPhotos() {
       const blob = await resp.blob();
       const path = `users/${currentUser.uid}/photos/${routeId}/${stopId}.jpg`;
       const photoRef = sRef(storage, path);
-      await uploadBytes(photoRef, blob, { contentType: 'image/jpeg' });
+      // Timeout de 15s per upload (igual que addStop)
+      await Promise.race([
+        uploadBytes(photoRef, blob, { contentType: 'image/jpeg' }),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('sync-timeout')), 15000))
+      ]);
       const url = await getDownloadURL(photoRef);
 
-      // Update the stop in the route
+      // Actualitza la parada a la ruta
       const route = routes.find(r => r.id === routeId);
       if (route) {
         const updatedStops = route.stops.map(s =>
           s.id === stopId ? { ...s, photoUrl: url, photoPath: path, photoPending: false } : s
         );
-        await saveRoute({ ...route, stops: updatedStops });
+        await Promise.race([
+          saveRoute({ ...route, stops: updatedStops }),
+          new Promise((_, rej) => setTimeout(() => rej(new Error('save-timeout')), 10000))
+        ]);
       }
       await deleteDoc(d.ref);
       synced++;
     } catch(err) {
-      console.error('Error syncing pending photo:', stopId, err);
+      console.error('Error syncing pending photo:', stopId, err.message);
+      // Si és timeout, parem la sincronització per no bloquejar
+      if (err.message.includes('timeout')) break;
     }
   }
   if (synced > 0) toast(`✅ ${synced} foto${synced>1?'s':''} sincronitzada${synced>1?'es':''} ara que tens connexió!`, 3500);
@@ -1049,10 +1058,22 @@ window.testStorage = async function() {
   }
 };
 
-// Online status update + sync pending photos
+// ═══════════ ONLINE / OFFLINE EVENTS ═══════════
 window.addEventListener('online', () => { renderUserInfo(); syncPendingPhotos(); });
-window.addEventListener('offline', renderUserInfo);
+window.addEventListener('offline', () => { renderUserInfo(); });
 
 </script>
+
+<script>
+// ── Service Worker: permet usar l'app sense connexió ──────────────
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/itineraris/sw.js')
+      .then(reg => console.log('SW registrat:', reg.scope))
+      .catch(err => console.warn('SW error:', err));
+  });
+}
+</script>
+
 </body>
 </html>
