@@ -882,46 +882,61 @@ window.addStop = async function() {
     return { url, path };
   }
 
-  let photoUrl=null, photoPath=null, photoPending=false;
-  if (pendingPhoto) {
-    $('uploadBar').classList.add('show');
-    $('uploadFill').style.width='20%';
-    try {
-      toast('📤 Pujant foto...', 14000);
-      $('uploadFill').style.width='50%';
-      const result = await tryUploadPhoto(pendingPhoto, currentRouteId, stopId);
-      $('uploadFill').style.width='100%';
-      photoUrl = result.url; photoPath = result.path;
-      toast('✅ Foto pujada!');
-    } catch(err) {
-      console.error('Upload failed, queueing offline:', err.message);
-      // Any failure (timeout, no internet, etc.) → offline queue
-      $('uploadFill').style.width='0'; $('uploadBar').classList.remove('show');
+  try {
+    let photoUrl=null, photoPath=null, photoPending=false;
+    if (pendingPhoto) {
+      $('uploadBar').classList.add('show');
+      $('uploadFill').style.width='20%';
       try {
-        await savePendingPhoto(currentRouteId, stopId, pendingPhoto);
-        photoPending = true;
-        toast('📱 Foto guardada — es pujarà quan tinguis connexió', 4000);
-      } catch(e2) {
-        toast('❌ No s\'ha pogut guardar la foto', 4000);
+        toast('📤 Pujant foto...', 14000);
+        $('uploadFill').style.width='50%';
+        const result = await tryUploadPhoto(pendingPhoto, currentRouteId, stopId);
+        $('uploadFill').style.width='100%';
+        photoUrl = result.url; photoPath = result.path;
+        toast('✅ Foto pujada!');
+      } catch(err) {
+        console.error('Upload failed, queueing offline:', err.message);
+        $('uploadFill').style.width='0'; $('uploadBar').classList.remove('show');
+        try {
+          await savePendingPhoto(currentRouteId, stopId, pendingPhoto);
+          photoPending = true;
+          toast('📱 Foto guardada — es pujarà quan tinguis connexió', 4000);
+        } catch(e2) {
+          toast('❌ No s\'ha pogut guardar la foto', 4000);
+        }
       }
     }
+
+    const stop = {
+      id: stopId, name,
+      timestamp: new Date().toISOString(),
+      notes: $('stopNotes').value.trim(),
+      lat: pendingGPS?.lat ?? null,
+      lng: pendingGPS?.lng ?? null,
+      acc: pendingGPS?.acc ?? null,
+      photoUrl, photoPath, photoPending
+    };
+
+    const updated = { ...r, stops: [...(r.stops||[]), stop] };
+    // Timeout de seguretat: offline persistence hauria de ser ràpid, però per si de cas
+    await Promise.race([
+      saveRoute(updated),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('save-timeout')), 10000))
+    ]);
+    window.closeModal('modalAddStop');
+    toast('📍 Parada afegida!');
+  } catch(err) {
+    console.error('addStop error:', err);
+    if (err.message === 'save-timeout') {
+      toast('⚠️ No hi ha connexió. Comprova el WiFi i torna-ho a intentar.', 4000);
+    } else {
+      toast('❌ Error en desar la parada. Torna-ho a intentar.', 3500);
+    }
+  } finally {
+    btn.disabled=false; btn.innerHTML='Afegir parada';
+    pendingPhoto=null; pendingGPS=null;
+    $('uploadBar').classList.remove('show'); $('uploadFill').style.width='0';
   }
-
-  const stop = {
-    id: stopId, name,
-    timestamp: new Date().toISOString(),
-    notes: $('stopNotes').value.trim(),
-    lat: pendingGPS?.lat ?? null,
-    lng: pendingGPS?.lng ?? null,
-    acc: pendingGPS?.acc ?? null,
-    photoUrl, photoPath, photoPending
-  };
-
-  const updated = { ...r, stops: [...(r.stops||[]), stop] };
-  await saveRoute(updated);
-  window.closeModal('modalAddStop');
-  toast('📍 Parada afegida!');
-  pendingPhoto=null; pendingGPS=null;
 };
 
 window.deleteStop = async function(stopId) {
