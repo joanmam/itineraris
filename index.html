@@ -620,55 +620,77 @@ window.syncPendingPhotos = syncPendingPhotos;
 let _syncing = false;
 async function syncPendingPhotos() {
   if (!currentUser || !navigator.onLine || _syncing) return;
-  let snap;
-  try { snap = await getDocs(pendingPhotosRef()); } catch { return; }
-  if (snap.empty) return;
-
   _syncing = true;
   let synced = 0, failed = 0;
 
-  for (const d of snap.docs) {
-    const { routeId, stopId, dataUrl } = d.data();
-    try {
-      // 1. Pujar la foto a Storage
-      const resp = await fetch(dataUrl);
-      const blob = await resp.blob();
-      const path = `users/${currentUser.uid}/photos/${routeId}/${stopId}.jpg`;
-      const photoRef = sRef(storage, path);
-      await Promise.race([
-        uploadBytes(photoRef, blob, { contentType: 'image/jpeg' }),
-        new Promise((_, rej) => setTimeout(() => rej(new Error('sync-timeout')), 20000))
-      ]);
-      const url = await getDownloadURL(photoRef);
+  try {
+    // ── Part 1: processar la cua de fotos pendents ──────────────────
+    let snap;
+    try { snap = await getDocs(pendingPhotosRef()); } catch { snap = null; }
 
-      // 2. Llegir la ruta directament de Firestore (no de memòria, que pot ser desfasada)
-      const routeSnap = await getDoc(routeDoc(routeId));
-      if (routeSnap.exists()) {
-        const routeData = { id: routeSnap.id, ...routeSnap.data() };
-        const updatedStops = (routeData.stops || []).map(s =>
-          s.id === stopId ? { ...s, photoUrl: url, photoPath: path, photoPending: false } : s
-        );
-        await setDoc(routeDoc(routeId), { ...routeSnap.data(), stops: updatedStops });
+    if (snap && !snap.empty) {
+      for (const d of snap.docs) {
+        const { routeId, stopId, dataUrl } = d.data();
+        try {
+          const resp = await fetch(dataUrl);
+          const blob = await resp.blob();
+          const path = `users/${currentUser.uid}/photos/${routeId}/${stopId}.jpg`;
+          const photoRef = sRef(storage, path);
+          await Promise.race([
+            uploadBytes(photoRef, blob, { contentType: 'image/jpeg' }),
+            new Promise((_, rej) => setTimeout(() => rej(new Error('sync-timeout')), 20000))
+          ]);
+          const url = await getDownloadURL(photoRef);
+
+          // Actualitzar la ruta — PRIMER setDoc, DESPRÉS deleteDoc
+          const routeSnap = await getDoc(routeDoc(routeId));
+          if (routeSnap.exists()) {
+            const updatedStops = (routeSnap.data().stops || []).map(s =>
+              s.id === stopId ? { ...s, photoUrl: url, photoPath: path, photoPending: false } : s
+            );
+            await setDoc(routeDoc(routeId), { ...routeSnap.data(), stops: updatedStops });
+            await deleteDoc(d.ref); // només esborra si setDoc ha anat bé
+            synced++;
+          }
+        } catch(err) {
+          console.error('Sync queue error:', stopId, err.message);
+          failed++;
+          if (err.message.includes('timeout')) break;
+        }
       }
-
-      // 3. Eliminar de la cua de pendents
-      await deleteDoc(d.ref);
-      synced++;
-    } catch(err) {
-      console.error('Sync error:', stopId, err.message);
-      failed++;
-      if (err.message.includes('timeout')) break;
     }
+
+    // ── Part 2: recuperar parades "òrfenes" ─────────────────────────
+    // (foto pujada a Storage però el doc de cua ja no existeix)
+    for (const r of routes) {
+      for (const s of (r.stops || [])) {
+        if (!s.photoPending || s.photoUrl) continue;
+        try {
+          const path = `users/${currentUser.uid}/photos/${r.id}/${s.id}.jpg`;
+          const url = await getDownloadURL(sRef(storage, path));
+          // La foto existeix a Storage — actualitzem la ruta
+          const routeSnap = await getDoc(routeDoc(r.id));
+          if (routeSnap.exists()) {
+            const updatedStops = (routeSnap.data().stops || []).map(st =>
+              st.id === s.id ? { ...st, photoUrl: url, photoPath: path, photoPending: false } : st
+            );
+            await setDoc(routeDoc(r.id), { ...routeSnap.data(), stops: updatedStops });
+            synced++;
+          }
+        } catch { /* foto no existeix a Storage — l'usuari haurà de repetir-la */ }
+      }
+    }
+  } finally {
+    _syncing = false;
   }
 
-  _syncing = false;
-
-  // 4. Forçar re-render per reflectir els canvis immediatament
   if (synced > 0) {
     if (currentRouteId) renderRoute();
     toast(`✅ ${synced} foto${synced>1?'s':''} sincronitzada${synced>1?'es':''} correctament!`, 3500);
   } else if (failed > 0) {
-    toast('⚠️ No s\'ha pogut pujar la foto. Torna-ho a intentar.', 4000);
+    toast('⚠️ No s\'ha pogut pujar la foto. Comprova la connexió.', 4000);
+  } else {
+    toast('ℹ️ No hi ha fotos pendents de sincronitzar.', 2500);
   }
 }
 
