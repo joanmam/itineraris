@@ -264,6 +264,13 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
     </div>
 
     <div class="account-card">
+      <div class="account-card-title">🔧 Test Storage</div>
+      <div class="account-card-desc" style="font-size:12px">Prova si Firebase Storage funciona correctament.</div>
+      <button class="btn btn-o" onclick="window.testStorage()" style="font-size:13px">🧪 Provar upload de test</button>
+      <div id="storageTestResult" style="font-size:12px;color:var(--gray-700);margin-top:10px;line-height:1.7;word-break:break-all"></div>
+    </div>
+
+    <div class="account-card">
       <div class="danger-zone">
         <div class="dz-label">Sessió</div>
         <button class="btn btn-do" onclick="window.doSignOut()">Tancar sessió</button>
@@ -362,7 +369,7 @@ import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect,
 import { initializeFirestore, persistentLocalCache, collection, doc,
          setDoc, deleteDoc, onSnapshot }
   from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
-import { getStorage, ref as sRef, uploadString, getDownloadURL, deleteObject }
+import { getStorage, ref as sRef, uploadBytes, getDownloadURL, deleteObject }
   from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js';
 
 // ═══════════ FIREBASE INIT ═══════════
@@ -377,7 +384,7 @@ const firebaseConfig = {
 const app  = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db   = initializeFirestore(app, { localCache: persistentLocalCache() });
-const storage = getStorage(app);
+const storage = getStorage(app, 'gs://itineraris-app.firebasestorage.app');
 
 // ═══════════ STATE ═══════════
 let currentUser = null;
@@ -498,7 +505,10 @@ async function removeRoute(id) {
 async function uploadPhoto(dataUrl, routeId, stopId) {
   const path = `users/${currentUser.uid}/photos/${routeId}/${stopId}.jpg`;
   const photoRef = sRef(storage, path);
-  await uploadString(photoRef, dataUrl, 'data_url');
+  // Convert data URL → Blob (more reliable than uploadString with data_url)
+  const resp = await fetch(dataUrl);
+  const blob = await resp.blob();
+  await uploadBytes(photoRef, blob, { contentType: 'image/jpeg' });
   const url = await getDownloadURL(photoRef);
   return { url, path };
 }
@@ -699,12 +709,27 @@ window.addStop = async function() {
     } else {
       try {
         $('uploadBar').classList.add('show');
+        $('uploadFill').style.width='20%';
+        toast('📤 Pujant foto...', 8000);
+        // Step 1: Convert data URL to Blob
+        const resp = await fetch(pendingPhoto);
+        const blob = await resp.blob();
         $('uploadFill').style.width='40%';
-        const result = await uploadPhoto(pendingPhoto, currentRouteId, stopId);
-        photoUrl = result.url; photoPath = result.path;
+        // Step 2: Build storage ref
+        const path = `users/${currentUser.uid}/photos/${currentRouteId}/${stopId}.jpg`;
+        const photoRef = sRef(storage, path);
+        $('uploadFill').style.width='55%';
+        // Step 3: Upload
+        await uploadBytes(photoRef, blob, { contentType: 'image/jpeg' });
+        $('uploadFill').style.width='80%';
+        // Step 4: Get URL
+        const url = await getDownloadURL(photoRef);
         $('uploadFill').style.width='100%';
+        photoUrl = url; photoPath = path;
+        toast('✅ Foto pujada!');
       } catch(err) {
-        toast('⚠️ Error pujant la foto: '+err.message);
+        console.error('Storage upload error:', err.code, err.message, err);
+        toast('❌ Error foto ['+( err.code||'?')+'] '+err.message, 6000);
       }
     }
   }
@@ -791,6 +816,50 @@ window.importData = async function(e) {
     document.head.appendChild(link);
   } catch{}
 })();
+
+// ═══════════ STORAGE TEST ═══════════
+window.testStorage = async function() {
+  const el = $('storageTestResult');
+  el.textContent = '⏳ Iniciant test...';
+  const log = msg => { el.innerHTML += msg+'<br>'; };
+  el.innerHTML = '';
+
+  if (!currentUser) { el.textContent = '❌ No autenticat'; return; }
+  log('👤 UID: '+currentUser.uid.slice(0,12)+'...');
+  log('🪣 Bucket: itineraris-app.firebasestorage.app');
+
+  try {
+    // Create a tiny 1x1 transparent PNG as test payload
+    const canvas = document.createElement('canvas');
+    canvas.width=1; canvas.height=1;
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.5);
+    log('📷 Test blob creat (1x1px)');
+
+    const testPath = `users/${currentUser.uid}/test/ping.jpg`;
+    const ref = sRef(storage, testPath);
+    log('📁 Path: '+testPath);
+
+    const resp = await fetch(dataUrl);
+    const blob = await resp.blob();
+    log('✅ Blob fetch ok ('+blob.size+' bytes)');
+
+    log('⬆️ Pujant a Storage...');
+    await uploadBytes(ref, blob, { contentType: 'image/jpeg' });
+    log('✅ uploadBytes ok!');
+
+    const url = await getDownloadURL(ref);
+    log('✅ Download URL obtinguda');
+    log('🔗 URL: '+url.slice(0,60)+'...');
+
+    await deleteObject(ref);
+    log('🗑️ Fitxer de test eliminat');
+    log('<strong style="color:#16a34a">✅ Storage funciona correctament!</strong>');
+  } catch(err) {
+    log('❌ ERROR: '+err.code);
+    log('Missatge: '+err.message);
+    console.error('Storage test error:', err);
+  }
+};
 
 // Online status update
 window.addEventListener('online', renderUserInfo);
