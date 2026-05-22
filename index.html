@@ -601,6 +601,7 @@ async function savePendingPhoto(routeId, stopId, dataUrl) {
   });
 }
 
+window.syncPendingPhotos = syncPendingPhotos;
 async function syncPendingPhotos() {
   if (!currentUser || !navigator.onLine) return;
   let snap;
@@ -769,7 +770,7 @@ function renderRoute() {
     const photo = s.photoUrl
       ? `<img class="sphoto" src="${s.photoUrl}" onclick="window.viewPhoto('${s.photoUrl}')" alt="" loading="lazy">`
       : s.photoPending
-        ? `<div style="background:rgba(217,119,6,.1);border:1.5px dashed var(--warn);border-radius:9px;padding:10px;font-size:12px;color:var(--warn);margin-top:6px">⏳ Foto pendent — es pujarà quan tinguis connexió</div>`
+        ? `<div style="background:rgba(217,119,6,.1);border:1.5px dashed var(--warn);border-radius:9px;padding:10px;font-size:12px;color:var(--warn);margin-top:6px">⏳ Foto pendent — <button onclick="window.syncPendingPhotos()" style="background:none;border:none;color:var(--primary);font-size:12px;font-weight:700;cursor:pointer;padding:0;text-decoration:underline">Sincronitzar ara</button></div>`
         : '';
     return `<div class="stop-card"><div class="sdot ${cls}"></div><div class="st">🕐 ${fmtDT(s.timestamp)}</div><div class="sn">📍 ${esc(s.name)}</div>${coord}${notes}${photo}<button class="sdel" onclick="window.deleteStop('${s.id}')">🗑️ Eliminar parada</button></div>`;
   }).join('');
@@ -868,37 +869,40 @@ window.addStop = async function() {
   const btn = $('addStopBtn');
   btn.disabled=true; btn.innerHTML='<span class="spin"></span>Desant...';
 
+  // Helper: upload with 12s timeout
+  async function tryUploadPhoto(dataUrl, routeId, stopId) {
+    const resp = await fetch(dataUrl);
+    const blob = await resp.blob();
+    const path = `users/${currentUser.uid}/photos/${routeId}/${stopId}.jpg`;
+    const photoRef = sRef(storage, path);
+    const uploadPromise = uploadBytes(photoRef, blob, { contentType: 'image/jpeg' });
+    const timeoutPromise = new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 12000));
+    await Promise.race([uploadPromise, timeoutPromise]);
+    const url = await getDownloadURL(photoRef);
+    return { url, path };
+  }
+
   let photoUrl=null, photoPath=null, photoPending=false;
   if (pendingPhoto) {
-    if (!navigator.onLine) {
-      // Save to offline queue
-      await savePendingPhoto(currentRouteId, stopId, pendingPhoto);
-      photoPending = true;
-      toast('📱 Sense connexió — foto guardada, es pujarà automàticament quan tinguis internet', 4000);
-    } else {
+    $('uploadBar').classList.add('show');
+    $('uploadFill').style.width='20%';
+    try {
+      toast('📤 Pujant foto...', 14000);
+      $('uploadFill').style.width='50%';
+      const result = await tryUploadPhoto(pendingPhoto, currentRouteId, stopId);
+      $('uploadFill').style.width='100%';
+      photoUrl = result.url; photoPath = result.path;
+      toast('✅ Foto pujada!');
+    } catch(err) {
+      console.error('Upload failed, queueing offline:', err.message);
+      // Any failure (timeout, no internet, etc.) → offline queue
+      $('uploadFill').style.width='0'; $('uploadBar').classList.remove('show');
       try {
-        $('uploadBar').classList.add('show');
-        $('uploadFill').style.width='20%';
-        toast('📤 Pujant foto...', 8000);
-        const resp = await fetch(pendingPhoto);
-        const blob = await resp.blob();
-        $('uploadFill').style.width='50%';
-        const path = `users/${currentUser.uid}/photos/${currentRouteId}/${stopId}.jpg`;
-        const photoRef = sRef(storage, path);
-        await uploadBytes(photoRef, blob, { contentType: 'image/jpeg' });
-        $('uploadFill').style.width='85%';
-        const url = await getDownloadURL(photoRef);
-        $('uploadFill').style.width='100%';
-        photoUrl = url; photoPath = path;
-        toast('✅ Foto pujada!');
-      } catch(err) {
-        console.error('Storage upload error:', err.code, err.message, err);
-        // Fallback: save to offline queue
-        try {
-          await savePendingPhoto(currentRouteId, stopId, pendingPhoto);
-          photoPending = true;
-          toast('⚠️ Error pujant — foto guardada, es sincronitzarà aviat', 4000);
-        } catch { toast('❌ Error foto: ' + (err.code||err.message), 4000); }
+        await savePendingPhoto(currentRouteId, stopId, pendingPhoto);
+        photoPending = true;
+        toast('📱 Foto guardada — es pujarà quan tinguis connexió', 4000);
+      } catch(e2) {
+        toast('❌ No s\'ha pogut guardar la foto', 4000);
       }
     }
   }
