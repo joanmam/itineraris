@@ -1,7 +1,7 @@
 // Service Worker — Itineraris PWA
 // Guarda l'app shell i els fitxers Firebase CDN per funcionar offline
 
-const APP_CACHE = 'itineraris-app-v1';
+const APP_CACHE = 'itineraris-app-v2';
 const CDN_CACHE = 'itineraris-cdn-v1';
 
 // Fitxers de l'app que es guarden en instal·lar el SW
