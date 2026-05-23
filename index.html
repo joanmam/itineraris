@@ -68,6 +68,17 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .route-name{font-size:15px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .route-meta{font-size:12px;color:var(--gray-500);margin-top:2px}
 .route-badge{background:var(--primary-light);color:var(--primary);font-size:11px;font-weight:700;border-radius:20px;padding:4px 10px;white-space:nowrap}
+/* CARPETES */
+.folder-section{margin-bottom:8px}
+.folder-hdr{display:flex;align-items:center;gap:10px;padding:11px 14px;background:var(--gray-100);border-radius:12px;cursor:pointer;user-select:none;border:1.5px solid transparent}
+.folder-hdr:active{background:var(--gray-200)}
+.folder-hdr-icon{font-size:20px;width:28px;text-align:center}
+.folder-hdr-name{flex:1;font-size:14px;font-weight:700;color:var(--gray-800)}
+.folder-hdr-count{font-size:12px;color:var(--gray-500)}
+.folder-caret{font-size:11px;color:var(--gray-400);transition:transform .2s;display:inline-block}
+.folder-caret.open{transform:rotate(90deg)}
+.folder-routes{padding-left:10px;margin-top:4px}
+.folder-mgmt-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--gray-100)}
 
 /* MODAL */
 .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:200;align-items:flex-end;justify-content:center}
@@ -205,6 +216,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
     <div class="header-inner">
       <div class="header-title">🗺️ Les meves rutes</div>
       <button class="hbtn g" onclick="window.showView('viewAccount')" style="margin-right:4px">👤</button>
+      <button class="hbtn g" onclick="window.openFolderMgmt()" style="margin-right:4px" title="Carpetes">📁</button>
       <button class="hbtn p" onclick="window.openNewRouteModal()">+ Nova</button>
     </div>
   </div>
@@ -280,6 +292,24 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 </div>
 
 <!-- ══ MODAL: NOVA RUTA ══ -->
+<!-- ══ MODAL: CARPETES ══ -->
+<div class="modal-overlay" id="modalFolderMgmt" onclick="window.closeModal('modalFolderMgmt')">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-handle"></div>
+    <div class="modal-title">📁 Carpetes</div>
+    <div id="folderMgmtList"></div>
+    <div class="fg" style="margin-top:14px">
+      <label class="fl">Nova carpeta</label>
+      <div style="display:flex;gap:8px">
+        <input class="fi" id="newFolderEmoji" type="text" placeholder="📁" maxlength="4" style="width:58px;text-align:center;font-size:22px;flex-shrink:0;padding:8px 4px">
+        <input class="fi" id="newFolderName" type="text" placeholder="Nom de la carpeta..." maxlength="50" style="flex:1">
+      </div>
+    </div>
+    <button class="btn btn-p" onclick="window.createFolder()">Crear carpeta</button>
+    <button class="btn btn-o" onclick="window.closeModal('modalFolderMgmt')">Tancar</button>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modalNewRoute" onclick="window.closeModal('modalNewRoute')">
   <div class="modal" onclick="event.stopPropagation()">
     <div class="modal-handle"></div>
@@ -349,6 +379,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
     <div class="fg">
       <label class="fl">Emoji</label>
       <input class="fi" id="editRouteEmoji" type="text" maxlength="4" style="font-size:24px;text-align:center">
+    </div>
+    <div class="fg">
+      <label class="fl">📁 Carpeta</label>
+      <select class="fi" id="editRouteFolder" style="cursor:pointer">
+        <option value="">General</option>
+      </select>
     </div>
     <div class="fg" style="background:var(--gray-50);border-radius:12px;padding:13px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
@@ -425,8 +461,11 @@ const storage = getStorage(app, 'gs://itineraris-app.firebasestorage.app');
 let currentUser = null;
 let currentRouteId = null;
 let routesListener = null;
+let foldersListener = null;
 let routes = [];
-let pendingPhoto = null;  // { dataUrl, compressedUrl }
+let folders = [];
+let openFolders = new Set(['__general__']); // General obre per defecte
+let pendingPhoto = null;
 let pendingGPS = null;
 
 // ═══════════ HELPERS ═══════════
@@ -538,6 +577,8 @@ window.signIn = async function() {
 
 window.doSignOut = async function() {
   if (routesListener) { routesListener(); routesListener = null; }
+  if (foldersListener) { foldersListener(); foldersListener = null; }
+  routes = []; folders = [];
   await fbSignOut(auth);
 };
 
@@ -575,6 +616,14 @@ function startListener() {
   }, err => {
     if (err.code !== 'permission-denied') toast('Error de xarxa: ' + err.message);
   });
+  // Iniciar listener de carpetes
+  if (foldersListener) foldersListener();
+  foldersListener = onSnapshot(foldersRef(), snap => {
+    folders = [];
+    snap.forEach(d => folders.push({ id: d.id, ...d.data() }));
+    folders.sort((a,b) => new Date(a.createdAt) - new Date(b.createdAt));
+    renderList();
+  });
 }
 
 async function saveRoute(route) {
@@ -586,6 +635,56 @@ async function removeRoute(id) {
   if (!currentUser) return;
   await deleteDoc(routeDoc(id));
 }
+
+// ═══════════ CARPETES ═══════════
+function foldersRef() { return collection(db, 'users', currentUser.uid, 'folders'); }
+function folderDoc(id) { return doc(db, 'users', currentUser.uid, 'folders', id); }
+
+window.openFolderMgmt = function() {
+  renderFolderMgmtList();
+  $('newFolderName').value = ''; $('newFolderEmoji').value = '';
+  window.openModal('modalFolderMgmt');
+  setTimeout(() => $('newFolderName').focus(), 250);
+};
+function renderFolderMgmtList() {
+  const list = $('folderMgmtList');
+  if (!folders.length) {
+    list.innerHTML = '<div style="text-align:center;color:var(--gray-500);font-size:14px;padding:14px 0">Cap carpeta creada</div>';
+    return;
+  }
+  list.innerHTML = folders.map(f => {
+    const count = routes.filter(r => r.folderId === f.id).length;
+    return `<div class="folder-mgmt-row">
+      <span style="font-size:20px">${f.emoji||'📁'}</span>
+      <span style="flex:1;font-size:14px;font-weight:600">${esc(f.name)}</span>
+      <span style="font-size:12px;color:var(--gray-500)">${count} ruta${count!==1?'es':''}</span>
+      <button onclick="window.deleteFolder('${f.id}')" style="background:none;border:none;color:var(--danger,#dc2626);font-size:18px;cursor:pointer;padding:4px 6px">🗑️</button>
+    </div>`;
+  }).join('');
+}
+window.createFolder = async function() {
+  const name = $('newFolderName').value.trim();
+  if (!name) { toast('⚠️ Posa un nom a la carpeta'); return; }
+  const emoji = $('newFolderEmoji').value.trim() || '📁';
+  await setDoc(folderDoc(uid()), { name, emoji, createdAt: new Date().toISOString() });
+  $('newFolderName').value = ''; $('newFolderEmoji').value = '';
+  toast('📁 Carpeta creada!');
+};
+window.deleteFolder = async function(folderId) {
+  const affected = routes.filter(r => r.folderId === folderId);
+  const msg = affected.length
+    ? `Aquesta carpeta té ${affected.length} ruta${affected.length!==1?'es':''}. Es mouran a "General". Continuar?`
+    : 'Eliminar aquesta carpeta?';
+  if (!confirm(msg)) return;
+  for (const r of affected) await saveRoute({ ...r, folderId: null });
+  await deleteDoc(folderDoc(folderId));
+  toast('🗑️ Carpeta eliminada');
+  renderFolderMgmtList();
+};
+window.toggleFolder = function(id) {
+  openFolders.has(id) ? openFolders.delete(id) : openFolders.add(id);
+  renderList();
+};
 
 // ═══════════ OFFLINE PHOTO QUEUE ═══════════
 function pendingPhotosRef() {
@@ -768,22 +867,56 @@ function gmapsUrl(stops) {
 }
 
 // ═══════════ ROUTE LIST ═══════════
+function routeCardHtml(r) {
+  const n = (r.stops||[]).length;
+  const last = n ? r.stops[n-1] : null;
+  const meta = last ? 'Última: '+fmtDT(last.timestamp) : 'Creada: '+fmtDate(r.createdAt);
+  return `<div class="route-card" onclick="window.openRoute('${r.id}')">
+    <div class="route-icon">${r.emoji||'🥾'}</div>
+    <div class="route-info"><div class="route-name">${esc(r.name)}</div><div class="route-meta">${meta}</div></div>
+    <div class="route-badge">${n} parada${n!==1?'es':''}</div>
+  </div>`;
+}
+function folderSectionHtml(id, icon, name, folderRoutes) {
+  const isOpen = openFolders.has(id);
+  const n = folderRoutes.length;
+  return `<div class="folder-section">
+    <div class="folder-hdr" onclick="window.toggleFolder('${id}')">
+      <span class="folder-hdr-icon">${icon}</span>
+      <span class="folder-hdr-name">${esc(name)}</span>
+      <span class="folder-hdr-count">${n} ruta${n!==1?'es':''}</span>
+      <span class="folder-caret ${isOpen?'open':''}">▶</span>
+    </div>
+    ${isOpen ? `<div class="folder-routes">${folderRoutes.map(routeCardHtml).join('')}</div>` : ''}
+  </div>`;
+}
 function renderList() {
   const body = $('routeListBody');
   if (!routes.length) {
     body.innerHTML = `<div class="empty-state"><div class="icon">🗺️</div><h3>Cap ruta encara</h3><p>Crea la teva primera ruta!</p></div>`;
     return;
   }
-  body.innerHTML = routes.map(r => {
-    const n = (r.stops||[]).length;
-    const last = n ? r.stops[n-1] : null;
-    const meta = last ? 'Última: '+fmtDT(last.timestamp) : 'Creada: '+fmtDate(r.createdAt);
-    return `<div class="route-card" onclick="window.openRoute('${r.id}')">
-      <div class="route-icon">${r.emoji||'🥾'}</div>
-      <div class="route-info"><div class="route-name">${esc(r.name)}</div><div class="route-meta">${meta}</div></div>
-      <div class="route-badge">${n} parada${n!==1?'es':''}</div>
-    </div>`;
-  }).join('');
+  // Si no hi ha carpetes, mostrar llista plana
+  if (!folders.length) {
+    body.innerHTML = routes.map(routeCardHtml).join('');
+    return;
+  }
+  // Agrupar per carpeta
+  const byFolder = {};
+  const general = [];
+  for (const r of routes) {
+    if (r.folderId && byFolder[r.folderId] !== undefined || r.folderId) {
+      (byFolder[r.folderId] = byFolder[r.folderId] || []).push(r);
+    } else {
+      general.push(r);
+    }
+  }
+  let html = '';
+  for (const f of folders) {
+    html += folderSectionHtml(f.id, f.emoji||'📁', f.name, byFolder[f.id]||[]);
+  }
+  html += folderSectionHtml('__general__', '📋', 'General', general);
+  body.innerHTML = html;
 }
 
 // ═══════════ ROUTE CRUD ═══════════
@@ -838,6 +971,10 @@ window.renderRoute = renderRoute;
 window.openRouteSettings = function() {
   const r = routes.find(r=>r.id===currentRouteId); if (!r) return;
   $('editRouteName').value = r.name; $('editRouteEmoji').value = r.emoji||'🥾';
+  // Poblar selector de carpetes
+  const sel = $('editRouteFolder');
+  sel.innerHTML = '<option value="">📋 General</option>' +
+    folders.map(f => `<option value="${f.id}" ${r.folderId===f.id?'selected':''}>${f.emoji||'📁'} ${esc(f.name)}</option>`).join('');
   const shared = !!r.shared;
   $('editRouteShared').checked = shared;
   updateShareToggleUI(shared);
@@ -871,7 +1008,8 @@ window.saveRouteSettings = async function() {
   const name = $('editRouteName').value.trim(); if (!name) { toast('⚠️ Cal un nom'); return; }
   const r = routes.find(r=>r.id===currentRouteId); if (!r) return;
   const shared = $('editRouteShared').checked;
-  await saveRoute({ ...r, name, emoji: $('editRouteEmoji').value.trim()||'🥾', shared });
+  const folderId = $('editRouteFolder').value || null;
+  await saveRoute({ ...r, name, emoji: $('editRouteEmoji').value.trim()||'🥾', shared, folderId });
   window.closeModal('modalRouteSettings'); toast('✅ Desat');
 };
 window.deleteRoute = async function() {
