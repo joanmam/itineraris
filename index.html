@@ -927,16 +927,17 @@ window.addStop = async function() {
   const btn = $('addStopBtn');
   btn.disabled=true; btn.innerHTML='<span class="spin"></span>Desant...';
 
-  // Helper: upload with 12s timeout
+  // Helper: timeout genèric
+  const T = ms => new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms));
+
+  // Helper: upload amb timeout a cada pas
   async function tryUploadPhoto(dataUrl, routeId, stopId) {
     const resp = await fetch(dataUrl);
     const blob = await resp.blob();
     const path = `users/${currentUser.uid}/photos/${routeId}/${stopId}.jpg`;
     const photoRef = sRef(storage, path);
-    const uploadPromise = uploadBytes(photoRef, blob, { contentType: 'image/jpeg' });
-    const timeoutPromise = new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 12000));
-    await Promise.race([uploadPromise, timeoutPromise]);
-    const url = await getDownloadURL(photoRef);
+    await Promise.race([uploadBytes(photoRef, blob, { contentType: 'image/jpeg' }), T(12000)]);
+    const url = await Promise.race([getDownloadURL(photoRef), T(8000)]); // timeout també aquí
     return { url, path };
   }
 
@@ -956,7 +957,8 @@ window.addStop = async function() {
         console.error('Upload failed, queueing offline:', err.message);
         $('uploadFill').style.width='0'; $('uploadBar').classList.remove('show');
         try {
-          await savePendingPhoto(currentRouteId, stopId, pendingPhoto);
+          // Timeout també a savePendingPhoto — si Firestore no respon, no es penja
+          await Promise.race([savePendingPhoto(currentRouteId, stopId, pendingPhoto), T(8000)]);
           photoPending = true;
           toast('📱 Foto guardada — es pujarà quan tinguis connexió', 4000);
         } catch(e2) {
