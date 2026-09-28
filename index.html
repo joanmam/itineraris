@@ -250,6 +250,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
     <div class="header-inner">
       <button class="header-back" onclick="window.showView('viewList')">←</button>
       <div class="header-title" id="routeTitle">Ruta</div>
+      <button class="hbtn g" onclick="window.shareRoute()" title="Compartir ruta" style="margin-right:4px">🔗</button>
       <button class="hbtn g" onclick="window.openRouteSettings()">⚙️</button>
     </div>
   </div>
@@ -1161,13 +1162,38 @@ function updateShareToggleUI(on) {
   $('shareUrlBox').style.display = on ? 'block' : 'none';
 }
 function updateShareUrlDisplay(uid, routeId) {
-  const url = `${location.origin}${location.pathname}?r=${uid}:${routeId}`;
-  $('shareUrlText').textContent = url;
+  $('shareUrlText').textContent = shareUrlFor(routeId);
 }
+function shareUrlFor(routeId) {
+  return `${location.origin}${location.pathname}?r=${currentUser.uid}:${routeId}`;
+}
+// L'interruptor es desa a l'instant (abans calia prémer "Desar canvis" i la ruta quedava privada)
 window.toggleShareUrl = function() {
   const on = $('editRouteShared').checked;
   updateShareToggleUI(on);
   if (on) updateShareUrlDisplay(currentUser.uid, currentRouteId);
+  const r = routes.find(r=>r.id===currentRouteId); if (!r) return;
+  saveRoute({ ...r, shared: on })
+    .catch(() => toast('⚠️ No s\'ha pogut desar. Comprova la connexió.', 3500));
+  toast(on ? '🔗 Ruta pública — ja pots enviar l\'enllaç' : '🔒 Ruta privada');
+};
+// Botó 🔗 de la capçalera: fa pública la ruta (si cal) i obre el menú de compartir del mòbil
+window.shareRoute = async function() {
+  const r = routes.find(r=>r.id===currentRouteId); if (!r || !currentUser) return;
+  if (!r.shared) {
+    try {
+      await Promise.race([saveRoute({ ...r, shared: true }), new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 8000))]);
+    } catch { toast('⚠️ Cal connexió per fer pública la ruta', 3500); return; }
+  }
+  const url = shareUrlFor(r.id);
+  if (navigator.share) {
+    try { await navigator.share({ title: r.name, text: `${r.emoji||'🥾'} ${r.name}`, url }); return; }
+    catch (e) { if (e.name === 'AbortError') return; }
+  }
+  try {
+    await navigator.clipboard.writeText(url);
+    toast('📋 Enllaç copiat! La ruta ara és pública');
+  } catch { prompt('Copia aquest enllaç:', url); }
 };
 window.copyShareUrl = function() {
   const url = $('shareUrlText').textContent;
