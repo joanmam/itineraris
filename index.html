@@ -10,6 +10,8 @@
 <meta name="theme-color" content="#2563eb">
 <meta name="mobile-web-app-capable" content="yes">
 <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'%3E%3Crect width='180' height='180' rx='40' fill='%232563eb'/%3E%3Ctext x='90' y='125' text-anchor='middle' font-size='100'%3E🗺️%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" crossorigin="anonymous">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" crossorigin="anonymous"></script>
 <style>
 :root {
   color-scheme: light;
@@ -87,7 +89,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .folder-mgmt-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--gray-100)}
 
 /* MODAL */
-.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:200;align-items:flex-end;justify-content:center}
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:2000;align-items:flex-end;justify-content:center}
 .modal-overlay.open{display:flex}
 .modal{background:white;border-radius:22px 22px 0 0;padding:20px 18px calc(28px + env(safe-area-inset-bottom,0));width:100%;max-width:480px;max-height:94vh;overflow-y:auto;animation:slideUp .22s ease}
 @keyframes slideUp{from{transform:translateY(40px);opacity:0}to{transform:translateY(0);opacity:1}}
@@ -138,6 +140,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .map-wrap{width:100%;border-radius:9px;overflow:hidden;background:#e0f2fe}
 .map-wrap svg{display:block;width:100%}
 .map-empty{font-size:12px;color:var(--gray-500);text-align:center;padding:18px}
+.lmap{height:260px;width:100%;position:relative;z-index:0}
+.lpin{width:26px;height:26px;border-radius:50%;background:var(--primary);color:white;border:2.5px solid white;box-shadow:0 1px 4px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;font:700 11px system-ui,sans-serif}
+.lpin.s{background:var(--success)} .lpin.e{background:var(--danger)}
+.lpop b{display:block;font-size:13px;margin-bottom:2px} .lpop span{font-size:11px;color:var(--gray-500)}
+.map-btns{display:flex;gap:6px}
+.map-btn2{font-size:12px;font-weight:700;color:var(--gray-700);background:var(--gray-100);border:none;padding:5px 11px;border-radius:20px;cursor:pointer;font-family:inherit}
 
 /* TIMELINE */
 .sec-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--gray-500);margin-bottom:10px;padding-left:4px}
@@ -153,6 +161,13 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .scoords{display:inline-block;font-size:11px;color:var(--primary);background:var(--primary-light);border-radius:6px;padding:3px 9px;margin-bottom:6px;cursor:pointer;text-decoration:none}
 .sphoto{width:100%;max-height:210px;object-fit:cover;border-radius:9px;margin-top:6px;cursor:pointer}
 .sdel{font-size:12px;color:var(--danger);background:none;border:none;cursor:pointer;margin-top:6px;padding:2px 0}
+.sactions{display:flex;align-items:center;gap:6px;margin-top:8px;padding-top:8px;border-top:1px solid var(--gray-100)}
+.sact{font-size:12px;font-weight:600;background:var(--gray-100);color:var(--gray-700);border:none;border-radius:8px;padding:6px 10px;cursor:pointer;font-family:inherit}
+.sact:disabled{opacity:.35;cursor:default}
+.sact.edit{background:var(--primary-light);color:var(--primary)}
+.sact.del{background:#fef2f2;color:var(--danger);margin-left:auto}
+.stop-card.flash{animation:flash 1s ease}
+@keyframes flash{0%{box-shadow:0 0 0 3px var(--primary)}100%{box-shadow:var(--shadow)}}
 .empty-tl{text-align:center;padding:40px 16px;color:var(--gray-500);font-size:14px}
 .fab{position:fixed;bottom:calc(24px + env(safe-area-inset-bottom,0));right:22px;width:58px;height:58px;background:var(--primary);color:white;border:none;border-radius:50%;font-size:28px;cursor:pointer;box-shadow:0 4px 14px rgba(37,99,235,.45);display:flex;align-items:center;justify-content:center;z-index:50;transition:transform .15s}
 .fab:active{transform:scale(.88)}
@@ -337,7 +352,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 <div class="modal-overlay" id="modalAddStop" onclick="window.closeModal('modalAddStop')">
   <div class="modal" onclick="event.stopPropagation()">
     <div class="modal-handle"></div>
-    <div class="modal-title">Nova parada</div>
+    <div class="modal-title" id="stopModalTitle">Nova parada</div>
     <div class="fg">
       <label class="fl">📍 Nom del lloc *</label>
       <input class="fi" id="stopName" type="text" placeholder="ex: Mirador, Font, Refugi..." maxlength="80">
@@ -348,11 +363,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
       <div class="gps-row">
         <button class="gps-btn" id="gpsCaptureBtn" onclick="window.captureGPS()">📡 Capturar</button>
         <div class="gps-disp" id="gpsDisplay">No capturades</div>
+        <button class="gps-btn" id="gpsClearBtn" style="display:none;background:#fef2f2;color:var(--danger);border-color:#fecaca" onclick="window.clearGPS()" title="Treure coordenades">✕</button>
       </div>
     </div>
     <div class="fg">
-      <label class="fl">⏱️ Hora d'arribada</label>
-      <div style="background:var(--gray-100);border-radius:10px;padding:10px 13px;font-size:14px;font-weight:600;color:var(--gray-700)" id="stopTimeDisplay">—</div>
+      <label class="fl">⏱️ Data i hora d'arribada</label>
+      <input class="fi" id="stopTime" type="datetime-local" step="60">
     </div>
     <div class="fg">
       <label class="fl">📝 Notes</label>
@@ -369,7 +385,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
       <button class="rm-photo" id="rmPhotoBtn" style="display:none" onclick="window.removePhoto()">✕ Treure foto</button>
       <div class="upload-bar" id="uploadBar"><div class="upload-bar-fill" id="uploadFill"></div></div>
     </div>
-    <button class="btn btn-p" id="addStopBtn" onclick="window.addStop()">Afegir parada</button>
+    <button class="btn btn-p" id="addStopBtn" onclick="window.saveStop()">Afegir parada</button>
     <button class="btn btn-o" onclick="window.closeModal('modalAddStop')">Cancel·lar</button>
   </div>
 </div>
@@ -474,6 +490,9 @@ let folders = [];
 let openFolders = new Set(['__general__']); // General obre per defecte
 let pendingPhoto = null;
 let pendingGPS = null;
+let editingStopId = null;   // null = nova parada; id = editant
+let photoRemoved = false;   // en edició: l'usuari ha tret la foto existent
+const leafletMaps = {};     // containerId → instància Leaflet
 
 // ═══════════ HELPERS ═══════════
 const $ = id => document.getElementById(id);
@@ -484,6 +503,12 @@ function fmtDT(iso) {
   return d.toLocaleDateString('ca-ES',{day:'2-digit',month:'short'}) + ' · ' + d.toLocaleTimeString('ca-ES',{hour:'2-digit',minute:'2-digit'});
 }
 function fmtDate(iso) { return new Date(iso).toLocaleDateString('ca-ES',{day:'numeric',month:'long',year:'numeric'}); }
+// ISO ↔ valor d'<input type="datetime-local"> (hora local)
+function isoToLocalInput(iso) {
+  const d = new Date(iso), p = n => String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+function localInputToIso(v) { const d = new Date(v); return isNaN(d) ? null : d.toISOString(); }
 
 function showView(id) {
   document.querySelectorAll('.view').forEach(v => { v.style.display = 'none'; v.classList.remove('active'); });
@@ -491,6 +516,8 @@ function showView(id) {
   el.style.display = 'block';
   el.classList.add('active');
   window.scrollTo(0,0);
+  // Leaflet necessita recalcular mida quan el contenidor passa a ser visible
+  setTimeout(() => Object.values(leafletMaps).forEach(m => { try { m.invalidateSize(); m._fitAll?.(); } catch {} }), 60);
 }
 window.showView = showView;
 
@@ -552,8 +579,6 @@ function renderSharedRoute(r) {
   const stops = r.stops || [];
   $('shareTitle').textContent = r.name;
   $('shareHeaderEl').innerHTML = `<div class="rhcard"><div class="rh-emoji">${r.emoji||'🥾'}</div><div class="rh-info"><h2>${esc(r.name)}</h2><p>${fmtDate(r.createdAt)} · ${stops.length} parades</p></div></div>`;
-  const gUrl = gmapsUrl(stops);
-  $('shareMapEl').innerHTML = `<div class="map-card"><div class="map-hdr"><div class="map-title">🗺️ Mapa de la ruta</div>${gUrl?`<a class="map-link" href="${gUrl}" target="_blank" rel="noopener">Google Maps ↗</a>`:''}</div><div class="map-wrap">${buildMap(stops)}</div></div>`;
   $('shareStopsLabel').textContent = `Parades (${stops.length})`;
   if (!stops.length) { $('shareStopsEl').innerHTML = `<div class="empty-tl">Aquesta ruta no té parades encara</div>`; }
   else {
@@ -563,10 +588,11 @@ function renderSharedRoute(r) {
       const coord = s.lat!=null ? `<a class="scoords" href="https://www.google.com/maps?q=${s.lat},${s.lng}" target="_blank" rel="noopener">📍 ${s.lat.toFixed(5)}, ${s.lng.toFixed(5)}</a>` : '';
       const notes = s.notes ? `<div class="snotes">${esc(s.notes)}</div>` : '';
       const photo = s.photoUrl ? `<img class="sphoto" src="${s.photoUrl}" onclick="window.viewPhoto('${s.photoUrl}')" alt="" loading="lazy">` : '';
-      return `<div class="stop-card"><div class="sdot ${cls}"></div><div class="st">🕐 ${fmtDT(s.timestamp)}</div><div class="sn">📍 ${esc(s.name)}</div>${coord}${notes}${photo}</div>`;
+      return `<div class="stop-card" data-stop="${s.id}"><div class="sdot ${cls}"></div><div class="st">${i+1} · 🕐 ${fmtDT(s.timestamp)}</div><div class="sn">📍 ${esc(s.name)}</div>${coord}${notes}${photo}</div>`;
     }).join('');
   }
   showView('viewShare');
+  renderMapCard('shareMapEl', 'shareLeaflet', stops);
 }
 
 window.signIn = async function() {
@@ -827,6 +853,7 @@ window.captureGPS = function() {
       pendingGPS = { lat: pos.coords.latitude, lng: pos.coords.longitude, acc: Math.round(pos.coords.accuracy) };
       disp.textContent = `${pendingGPS.lat.toFixed(5)}, ${pendingGPS.lng.toFixed(5)} (±${pendingGPS.acc}m)`;
       btn.className = 'gps-btn ok'; btn.innerHTML = '✅ Capturat'; btn.disabled = false;
+      $('gpsClearBtn').style.display = '';
       if (navigator.onLine) fetchNearbyPlaces(pendingGPS.lat, pendingGPS.lng);
     },
     err => {
@@ -941,6 +968,65 @@ function buildMap(stops) {
     <text x="${W-8}" y="${H-7}" fill="#dc2626" font-size="9" font-family="system-ui" font-weight="bold" text-anchor="end">■ Final</text>
   </svg>`;
 }
+// ═══════════ MAPA REAL (Leaflet + OpenStreetMap) ═══════════
+// Si Leaflet no s'ha pogut carregar (sense connexió i sense caché) es fa servir l'esquema SVG.
+function renderMapCard(hostId, mapId, stops) {
+  const host = $(hostId);
+  const pts = stops.filter(s => s.lat != null && s.lng != null);
+  // Evitar reconstruir el mapa (i perdre zoom) si les coordenades no han canviat
+  const sig = stops.map(s => `${s.id}:${s.lat},${s.lng}:${s.name}:${s.timestamp}`).join('|');
+  if (host.dataset.sig === sig && leafletMaps[mapId]) return;
+  host.dataset.sig = sig;
+  if (leafletMaps[mapId]) { try { leafletMaps[mapId].remove(); } catch {} delete leafletMaps[mapId]; }
+
+  const gUrl = gmapsUrl(stops);
+  const useLeaflet = typeof window.L !== 'undefined' && pts.length > 0;
+  host.innerHTML = `<div class="map-card"><div class="map-hdr"><div class="map-title">🗺️ Mapa de la ruta</div>
+    <div class="map-btns">${useLeaflet && pts.length>1 ? `<button class="map-btn2" onclick="window.fitMap('${mapId}')">🎯 Centrar</button>` : ''}
+    ${gUrl?`<a class="map-link" href="${gUrl}" target="_blank" rel="noopener">Google Maps ↗</a>`:''}</div></div>
+    <div class="map-wrap">${useLeaflet ? `<div class="lmap" id="${mapId}"></div>` : buildMap(stops)}</div></div>`;
+  if (useLeaflet) mountLeaflet(mapId, stops);
+}
+
+function mountLeaflet(mapId, stops) {
+  const el = $(mapId); if (!el) return;
+  const last = stops.length - 1;
+  const pts = stops.map((s, i) => ({ s, i })).filter(o => o.s.lat != null && o.s.lng != null);
+  const map = L.map(el, { zoomControl: true, scrollWheelZoom: false });
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>'
+  }).addTo(map);
+
+  const latlngs = pts.map(o => [o.s.lat, o.s.lng]);
+  if (latlngs.length > 1) {
+    L.polyline(latlngs, { color: '#2563eb', weight: 4, opacity: .8, lineJoin: 'round' }).addTo(map);
+  }
+  pts.forEach(({ s, i }) => {
+    const cls = i === 0 ? 's' : i === last ? 'e' : '';
+    const icon = L.divIcon({ className: '', html: `<div class="lpin ${cls}">${i+1}</div>`, iconSize: [26,26], iconAnchor: [13,13], popupAnchor: [0,-12] });
+    const acc = s.acc ? ` · ±${s.acc} m` : '';
+    L.marker([s.lat, s.lng], { icon, zIndexOffset: cls ? 500 : 0 })
+      .bindPopup(`<div class="lpop"><b>${i+1}. ${esc(s.name)}</b><span>🕐 ${fmtDT(s.timestamp)}${acc}</span><br>
+        <a href="#" onclick="window.scrollToStop('${s.id}');return false">Veure a la llista ↓</a></div>`)
+      .addTo(map);
+  });
+  map._fitAll = () => {
+    if (latlngs.length === 1) map.setView(latlngs[0], 15);
+    else map.fitBounds(latlngs, { padding: [28, 28], maxZoom: 17 });
+  };
+  map._fitAll();
+  leafletMaps[mapId] = map;
+  setTimeout(() => { map.invalidateSize(); map._fitAll(); }, 80);
+}
+window.fitMap = id => leafletMaps[id]?._fitAll();
+window.scrollToStop = function(id) {
+  const card = document.querySelector(`[data-stop="${id}"]`);
+  if (!card) return;
+  card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  card.classList.remove('flash'); void card.offsetWidth; card.classList.add('flash');
+};
+
 function gmapsUrl(stops) {
   const pts = stops.filter(s=>s.lat!=null&&s.lng!=null);
   if (!pts.length) return null;
@@ -1031,8 +1117,7 @@ function renderRoute() {
   $('routeTitle').textContent = r.name;
   $('routeHeaderEl').innerHTML = `<div class="rhcard"><div class="rh-emoji">${r.emoji||'🥾'}</div><div class="rh-info"><h2>${esc(r.name)}</h2><p>${fmtDate(r.createdAt)} · ${(r.stops||[]).length} parades</p></div></div>`;
   const stops = r.stops || [];
-  const gUrl = gmapsUrl(stops);
-  $('routeMapEl').innerHTML = `<div class="map-card"><div class="map-hdr"><div class="map-title">🗺️ Mapa de la ruta</div>${gUrl?`<a class="map-link" href="${gUrl}" target="_blank" rel="noopener">Google Maps ↗</a>`:''}</div><div class="map-wrap">${buildMap(stops)}</div></div>`;
+  renderMapCard('routeMapEl', 'routeLeaflet', stops);
   $('stopsLabel').textContent = `Parades (${stops.length})`;
   if (!stops.length) { $('stopsEl').innerHTML = `<div class="empty-tl">📍 Prem <strong>+</strong> per afegir la primera parada</div>`; return; }
   const last = stops.length-1;
@@ -1045,7 +1130,13 @@ function renderRoute() {
       : s.photoPending
         ? `<div style="background:rgba(217,119,6,.1);border:1.5px dashed var(--warn);border-radius:9px;padding:10px;font-size:12px;color:var(--warn);margin-top:6px">⏳ Foto pendent — <button onclick="window.syncPendingPhotos()" style="background:none;border:none;color:var(--primary);font-size:12px;font-weight:700;cursor:pointer;padding:0;text-decoration:underline">Sincronitzar ara</button></div>`
         : '';
-    return `<div class="stop-card"><div class="sdot ${cls}"></div><div class="st">🕐 ${fmtDT(s.timestamp)}</div><div class="sn">📍 ${esc(s.name)}</div>${coord}${notes}${photo}<button class="sdel" onclick="window.deleteStop('${s.id}')">🗑️ Eliminar parada</button></div>`;
+    const actions = `<div class="sactions">
+      <button class="sact" title="Pujar" ${i===0?'disabled':''} onclick="window.moveStop('${s.id}',-1)">↑</button>
+      <button class="sact" title="Baixar" ${i===last?'disabled':''} onclick="window.moveStop('${s.id}',1)">↓</button>
+      <button class="sact edit" onclick="window.openEditStop('${s.id}')">✏️ Editar</button>
+      <button class="sact del" onclick="window.deleteStop('${s.id}')">🗑️</button>
+    </div>`;
+    return `<div class="stop-card" data-stop="${s.id}"><div class="sdot ${cls}"></div><div class="st">${i+1} · 🕐 ${fmtDT(s.timestamp)}</div><div class="sn">📍 ${esc(s.name)}</div>${coord}${notes}${photo}${actions}</div>`;
   }).join('');
 }
 window.renderRoute = renderRoute;
@@ -1104,18 +1195,58 @@ window.deleteRoute = async function() {
 };
 
 // ═══════════ STOP CRUD ═══════════
-window.openAddStop = function() {
+function resetStopModal() {
   $('stopName').value=''; $('stopNotes').value='';
   $('placeSuggestions').innerHTML='';
   $('gpsDisplay').textContent='No capturades';
   $('gpsCaptureBtn').className='gps-btn'; $('gpsCaptureBtn').innerHTML='📡 Capturar'; $('gpsCaptureBtn').disabled=false;
-  $('stopTimeDisplay').textContent='⏱ '+fmtDT(new Date().toISOString());
-  $('photoPrev').classList.remove('show'); $('rmPhotoBtn').style.display='none'; $('photoIn').value='';
+  $('gpsClearBtn').style.display='none';
+  $('stopTime').value = isoToLocalInput(new Date().toISOString());
+  $('photoPrev').classList.remove('show'); $('photoPrev').removeAttribute('src');
+  $('rmPhotoBtn').style.display='none'; $('photoIn').value='';
   $('uploadBar').classList.remove('show'); $('uploadFill').style.width='0';
-  $('addStopBtn').disabled=false; $('addStopBtn').innerHTML='Afegir parada';
-  pendingPhoto=null; pendingGPS=null;
+  $('addStopBtn').disabled=false;
+  pendingPhoto=null; pendingGPS=null; photoRemoved=false;
+}
+
+window.openAddStop = function() {
+  editingStopId = null;
+  resetStopModal();
+  $('stopModalTitle').textContent = 'Nova parada';
+  $('addStopBtn').innerHTML = 'Afegir parada';
   window.openModal('modalAddStop');
   setTimeout(()=>{ $('stopName').focus(); window.captureGPS(); }, 300);
+};
+
+window.openEditStop = function(stopId) {
+  const r = routes.find(r=>r.id===currentRouteId); if (!r) return;
+  const s = (r.stops||[]).find(s=>s.id===stopId); if (!s) return;
+  editingStopId = stopId;
+  resetStopModal();
+  $('stopModalTitle').textContent = 'Editar parada';
+  $('addStopBtn').innerHTML = 'Desar canvis';
+  $('stopName').value = s.name || '';
+  $('stopNotes').value = s.notes || '';
+  $('stopTime').value = isoToLocalInput(s.timestamp);
+  if (s.lat != null && s.lng != null) {
+    pendingGPS = { lat: s.lat, lng: s.lng, acc: s.acc ?? null };
+    $('gpsDisplay').textContent = `${s.lat.toFixed(5)}, ${s.lng.toFixed(5)}${s.acc?` (±${s.acc}m)`:''}`;
+    $('gpsCaptureBtn').innerHTML = '📡 Recapturar';
+    $('gpsClearBtn').style.display = '';
+  }
+  if (s.photoUrl) {
+    $('photoPrev').src = s.photoUrl; $('photoPrev').classList.add('show');
+    $('rmPhotoBtn').style.display = 'block';
+  }
+  window.openModal('modalAddStop');
+};
+
+window.clearGPS = function() {
+  pendingGPS = null;
+  $('gpsDisplay').textContent = 'No capturades';
+  $('gpsCaptureBtn').className='gps-btn'; $('gpsCaptureBtn').innerHTML='📡 Capturar';
+  $('gpsClearBtn').style.display = 'none';
+  $('placeSuggestions').innerHTML = '';
 };
 
 window.handlePhoto = function(e) {
@@ -1136,16 +1267,23 @@ window.handlePhoto = function(e) {
   reader.readAsDataURL(file);
 };
 window.removePhoto = function() {
-  pendingPhoto=null; $('photoPrev').classList.remove('show');
+  pendingPhoto=null; photoRemoved = !!editingStopId;
+  $('photoPrev').classList.remove('show'); $('photoPrev').removeAttribute('src');
   $('rmPhotoBtn').style.display='none'; $('photoIn').value='';
 };
 
-window.addStop = async function() {
+// Desa una parada nova o l'editada
+window.saveStop = async function() {
   const name = $('stopName').value.trim();
   if (!name) { toast('⚠️ Posa un nom a la parada'); return; }
   const r = routes.find(r=>r.id===currentRouteId); if (!r) return;
-  const stopId = uid();
+  const isEdit = !!editingStopId;
+  const original = isEdit ? (r.stops||[]).find(s=>s.id===editingStopId) : null;
+  if (isEdit && !original) { toast('⚠️ La parada ja no existeix'); window.closeModal('modalAddStop'); return; }
+  const stopId = isEdit ? editingStopId : uid();
+  const timestamp = localInputToIso($('stopTime').value) || original?.timestamp || new Date().toISOString();
   const btn = $('addStopBtn');
+  const btnLabel = isEdit ? 'Desar canvis' : 'Afegir parada';
   btn.disabled=true; btn.innerHTML='<span class="spin"></span>Desant...';
 
   // Helper: timeout genèric
@@ -1163,8 +1301,14 @@ window.addStop = async function() {
   }
 
   try {
-    let photoUrl=null, photoPath=null, photoPending=false;
+    // Per defecte, en edició es conserva la foto existent
+    let photoUrl = original?.photoUrl ?? null,
+        photoPath = original?.photoPath ?? null,
+        photoPending = original?.photoPending ?? false;
+
     if (pendingPhoto) {
+      // Foto nova (o substitució)
+      photoUrl = null; photoPath = null; photoPending = false;
       $('uploadBar').classList.add('show');
       $('uploadFill').style.width='20%';
       try {
@@ -1186,11 +1330,16 @@ window.addStop = async function() {
           toast('❌ No s\'ha pogut guardar la foto', 4000);
         }
       }
+    } else if (photoRemoved && original) {
+      // L'usuari ha tret la foto existent
+      if (original.photoPath) await deletePhoto(original.photoPath);
+      try { await deleteDoc(pendingPhotoDoc(stopId)); } catch {}
+      photoUrl = null; photoPath = null; photoPending = false;
     }
 
     const stop = {
-      id: stopId, name,
-      timestamp: new Date().toISOString(),
+      ...(original || {}),
+      id: stopId, name, timestamp,
       notes: $('stopNotes').value.trim(),
       lat: pendingGPS?.lat ?? null,
       lng: pendingGPS?.lng ?? null,
@@ -1198,26 +1347,43 @@ window.addStop = async function() {
       photoUrl, photoPath, photoPending
     };
 
-    const updated = { ...r, stops: [...(r.stops||[]), stop] };
+    const stops = r.stops || [];
+    const updated = isEdit
+      ? { ...r, stops: stops.map(s => s.id === stopId ? stop : s) }
+      : { ...r, stops: [...stops, stop] };
     // Timeout de seguretat: offline persistence hauria de ser ràpid, però per si de cas
     await Promise.race([
       saveRoute(updated),
       new Promise((_, rej) => setTimeout(() => rej(new Error('save-timeout')), 10000))
     ]);
     window.closeModal('modalAddStop');
-    toast('📍 Parada afegida!');
+    toast(isEdit ? '✅ Parada actualitzada!' : '📍 Parada afegida!');
   } catch(err) {
-    console.error('addStop error:', err);
+    console.error('saveStop error:', err);
     if (err.message === 'save-timeout') {
       toast('⚠️ No hi ha connexió. Comprova el WiFi i torna-ho a intentar.', 4000);
     } else {
       toast('❌ Error en desar la parada. Torna-ho a intentar.', 3500);
     }
   } finally {
-    btn.disabled=false; btn.innerHTML='Afegir parada';
-    pendingPhoto=null; pendingGPS=null;
+    btn.disabled=false; btn.innerHTML=btnLabel;
+    pendingPhoto=null; pendingGPS=null; photoRemoved=false; editingStopId=null;
     $('uploadBar').classList.remove('show'); $('uploadFill').style.width='0';
   }
+};
+window.addStop = window.saveStop; // compatibilitat
+
+// Reordenar: dir = -1 (pujar) o +1 (baixar)
+window.moveStop = async function(stopId, dir) {
+  const r = routes.find(r=>r.id===currentRouteId); if (!r) return;
+  const stops = [...(r.stops||[])];
+  const i = stops.findIndex(s=>s.id===stopId), j = i + dir;
+  if (i < 0 || j < 0 || j >= stops.length) return;
+  [stops[i], stops[j]] = [stops[j], stops[i]];
+  try {
+    await saveRoute({ ...r, stops });
+    setTimeout(() => window.scrollToStop(stopId), 50);
+  } catch { toast('❌ No s\'ha pogut reordenar'); }
 };
 
 window.deleteStop = async function(stopId) {

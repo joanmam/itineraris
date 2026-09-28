@@ -1,8 +1,10 @@
 // Service Worker — Itineraris PWA
 // Guarda l'app shell i els fitxers Firebase CDN per funcionar offline
 
-const APP_CACHE = 'itineraris-app-v2';
-const CDN_CACHE = 'itineraris-cdn-v1';
+const APP_CACHE  = 'itineraris-app-v3';
+const CDN_CACHE  = 'itineraris-cdn-v2';
+const TILE_CACHE = 'itineraris-tiles-v1';
+const TILE_MAX   = 1500; // màxim de rajoles de mapa guardades
 
 // Fitxers de l'app que es guarden en instal·lar el SW
 const APP_SHELL = [
@@ -28,7 +30,7 @@ self.addEventListener('activate', event => {
     caches.keys().then(keys =>
       Promise.all(
         keys
-          .filter(k => k !== APP_CACHE && k !== CDN_CACHE)
+          .filter(k => k !== APP_CACHE && k !== CDN_CACHE && k !== TILE_CACHE)
           .map(k => caches.delete(k))
       )
     ).then(() => self.clients.claim())
@@ -50,14 +52,32 @@ self.addEventListener('fetch', event => {
     return; // deixa que el navegador ho gestioni (Firebase SDK ho controla)
   }
 
-  // Firebase CDN (SDK JS) → caché primer, xarxa si no hi és
-  if (url.hostname === FIREBASE_CDN_ORIGIN) {
+  // Rajoles del mapa OpenStreetMap → caché primer (les rutes ja vistes es veuen offline)
+  if (url.hostname === 'tile.openstreetmap.org') {
+    event.respondWith(
+      caches.open(TILE_CACHE).then(cache =>
+        cache.match(event.request).then(cached => {
+          if (cached) return cached;
+          return fetch(event.request).then(response => {
+            if (response.ok || response.type === 'opaque') {
+              cache.put(event.request, response.clone()).then(() => trimCache(cache, TILE_MAX));
+            }
+            return response;
+          });
+        })
+      )
+    );
+    return;
+  }
+
+  // Firebase CDN (SDK JS) i Leaflet (cdnjs) → caché primer, xarxa si no hi és
+  if (url.hostname === FIREBASE_CDN_ORIGIN || url.hostname === 'cdnjs.cloudflare.com') {
     event.respondWith(
       caches.open(CDN_CACHE).then(cache =>
         cache.match(event.request).then(cached => {
           if (cached) return cached;
           return fetch(event.request).then(response => {
-            if (response.ok) cache.put(event.request, response.clone());
+            if (response.ok || response.type === 'opaque') cache.put(event.request, response.clone());
             return response;
           }).catch(() => cached); // si falla la xarxa i hi ha caché, usa-la
         })
@@ -84,3 +104,10 @@ self.addEventListener('fetch', event => {
     return;
   }
 });
+
+// ── Limita la mida d'una caché esborrant les entrades més antigues ──
+async function trimCache(cache, max) {
+  const keys = await cache.keys();
+  if (keys.length <= max) return;
+  await Promise.all(keys.slice(0, keys.length - max).map(k => cache.delete(k)));
+}
